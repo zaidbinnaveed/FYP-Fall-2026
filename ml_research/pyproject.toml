@@ -44,6 +44,19 @@ dev = [
     "types-PyYAML>=6.0",
 ]
 
+[tool.uv]
+# Every locked package must have wheels for the platforms we actually run on: Linux x86-64
+# (CI, lab GPU, Colab, Kaggle) and Windows x86-64 (team laptops). Without this a brand-new
+# release that has not yet published Linux wheels can be locked and break CI (Nov 2026:
+# opencv-python-headless 5.1.0.95).
+required-environments = [
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "sys_platform == 'win32' and platform_machine == 'AMD64'",
+]
+# One OpenCV version on every platform (pulled in by albumentations and grad-cam). Lift this when
+# a 5.1.x release publishes Linux wheels; Dependabot will propose it.
+constraint-dependencies = ["opencv-python-headless<5.1"]
+
 [build-system]
 requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"
