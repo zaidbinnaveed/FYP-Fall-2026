@@ -9,11 +9,17 @@
 ml_research/data/
 ml_research/runs/
 runs/
+ml_research/.cache/
+results_small.zip
+checkpoints.zip
 *.pt
 *.pth
 *.ckpt
 *.safetensors
 *.onnx
+
+# --- Scratch space for temporary files (emptied before each phase report) ---
+.scratch/
 
 # --- Python ---
 __pycache__/

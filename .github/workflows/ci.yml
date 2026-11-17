@@ -174,7 +174,7 @@ jobs:
       - name: Mypy (strict)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: mypy
-      - name: Pytest (unit, protocol guard, smoke runs, determinism)
+      - name: Pytest (unit, protocol guard, models, smoke, pipeline, resume, determinism)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: pytest -v
       - name: "R0 acceptance: oscc-ml train --model resnet50 --smoke (5-minute limit)"
@@ -187,6 +187,45 @@ jobs:
           run_dir=$(ls -d "$RUNNER_TEMP"/runs/*_resnet50_42)
           find "$run_dir" -type f | sort
           cat "$run_dir/environment.json"
+
+  uni-scripts:
+    name: University scripts (${{ matrix.os }}) - uni_setup + uni_check in CPU mode
+    needs: changes
+    if: needs.changes.outputs.ml == 'true' || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: ml_research/uv.lock
+      - name: ShellCheck the bash scripts
+        if: runner.os == 'Linux'
+        run: shellcheck ml_research/scripts/*.sh
+      - name: uni_setup.sh --cpu
+        if: runner.os == 'Linux'
+        run: bash ml_research/scripts/uni_setup.sh --cpu
+      - name: uni_check.sh (CPU, no downloads)
+        if: runner.os == 'Linux'
+        run: bash ml_research/scripts/uni_check.sh --allow-cpu --skip-download --min-free-gb 1 --budget-seconds 20 --batch-size 2
+      - name: uni_setup.ps1 -Cpu (Windows PowerShell 5.1)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: powershell -ExecutionPolicy Bypass -File ml_research/scripts/uni_setup.ps1 -Cpu
+      - name: uni_check.ps1 (CPU, no downloads)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: powershell -ExecutionPolicy Bypass -File ml_research/scripts/uni_check.ps1 -AllowCpu -SkipDownload -MinFreeGb 1 -BudgetSeconds 20 -BatchSize 2
+      - name: Show uni_check.log
+        if: always()
+        shell: bash
+        run: cat ml_research/runs/uni_check.log || true
 
   secrets:
     name: Secret scan (gitleaks)
@@ -232,7 +271,7 @@ jobs:
   ci-ok:
     name: CI result
     if: always()
-    needs: [api, inference, frontend, ml, secrets, compose]
+    needs: [api, inference, frontend, ml, uni-scripts, secrets, compose]
     runs-on: ubuntu-24.04
     steps:
       - name: Fail if any required job failed or was cancelled
