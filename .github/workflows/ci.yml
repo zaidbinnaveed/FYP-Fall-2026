@@ -26,6 +26,7 @@ jobs:
       api: ${{ steps.filter.outputs.api }}
       inference: ${{ steps.filter.outputs.inference }}
       frontend: ${{ steps.filter.outputs.frontend }}
+      ml: ${{ steps.filter.outputs.ml }}
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: dorny/paths-filter@v4.0.3
@@ -44,6 +45,9 @@ jobs:
             frontend:
               - *shared
               - 'frontend/**'
+            ml:
+              - *shared
+              - 'ml_research/**'
 
   api:
     name: API - lint, types, tests
@@ -136,6 +140,48 @@ jobs:
       - run: npm test
       - run: npm run build
 
+  ml:
+    name: ML research - lint, types, tests, CPU smoke run
+    needs: changes
+    if: needs.changes.outputs.ml == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ml_research
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: ml_research/uv.lock
+      - name: Check the lockfile is up to date
+        run: uv lock --check
+      - name: Install pinned deps with CPU torch (lockfile stays platform-neutral)
+        run: |
+          uv venv --python 3.11 .venv
+          echo "VIRTUAL_ENV=$PWD/.venv" >> "$GITHUB_ENV"
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+          VIRTUAL_ENV="$PWD/.venv" bash scripts/install_pinned.sh --torch cpu --extra train --dev
+      - name: Ruff lint
+        run: ruff check .
+      - name: Ruff format
+        run: ruff format --check .
+      - name: Mypy (strict)
+        run: mypy
+      - name: Pytest (unit, protocol guard, smoke runs, determinism)
+        run: pytest -v
+      - name: "R0 acceptance: oscc-ml train --model resnet50 --smoke (5-minute limit)"
+        timeout-minutes: 5
+        run: |
+          start=$(date +%s)
+          oscc-ml train --model resnet50 --smoke --runs-dir "$RUNNER_TEMP/runs"
+          echo "elapsed: $(( $(date +%s) - start )) s"
+          run_dir=$(ls -d "$RUNNER_TEMP"/runs/*_resnet50_42)
+          find "$run_dir" -type f | sort
+          cat "$run_dir/environment.json"
+
   secrets:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-24.04
@@ -180,7 +226,7 @@ jobs:
   ci-ok:
     name: CI result
     if: always()
-    needs: [api, inference, frontend, secrets, compose]
+    needs: [api, inference, frontend, ml, secrets, compose]
     runs-on: ubuntu-24.04
     steps:
       - name: Fail if any required job failed or was cancelled

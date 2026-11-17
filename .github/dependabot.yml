@@ -5,7 +5,7 @@ updates:
     schedule:
       interval: monthly
   - package-ecosystem: uv
-    directories: [/api, /inference]
+    directories: [/api, /inference, /ml_research]
     schedule:
       interval: monthly
     open-pull-requests-limit: 3
