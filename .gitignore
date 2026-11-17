@@ -1,0 +1,44 @@
+# --- Secrets (NFR-SEC-09) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- Research data, weights and runs (never committed) ---
+ml_research/data/
+ml_research/runs/
+runs/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.import_linter_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.egg-info/
+build/
+dist/
+
+# --- Node ---
+node_modules/
+frontend/dist/
+frontend/coverage/
+*.tsbuildinfo
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

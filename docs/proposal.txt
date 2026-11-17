@@ -1,0 +1,633 @@
+       OSCC Health Intelligence: A Deep Learning
+Framework Comparing CNN and Vision Transformer
+    Architectures for Oral Squamous Cell Carcinoma
+ Detection with Integrated Hospital Recommendation
+             and Patient-Support Chatbot
+
+                 Final Year Project Proposal
+
+                      Session FALL 2026
+
+                         BS in CS/AI/SE
+
+
+
+
+                   Department of CS/AI/SE
+                  Fast School of Computing
+           Fast National University, Karachi Campus
+                       12th September 2026
+
+
+
+
+                               1
+                                     Project Registration
+Project ID (for office use)
+
+Type of project         [✓] Traditional [ ] Industrial [ ] Continuing
+Nature of project       [ ] Development [✓] Research & Development [ ] Research
+                        [
+Sustainable Development ✓] Good Health and Well-Being [ ] Quality Education [ ] Industry,
+Goals (SDGs)            Innovation, and Infrastructure [ ] Gender Equality [ ] Decent Work and
+                        Economic Growth [ ] Climate Action
+                        [✓] Artificial Intelligence (AI) [ ] Data Science and Analytics [ ] Internet of
+                        Things (IoT) [ ] Blockchain [ ] Mobile App Development [✓] Web
+Area of specialization
+                        Development [ ] Cybersecurity [ ] Game Development [ ] Natural
+                        Language Processing (NLP) [ ] Other
+Project Group Members
+Sr.#    Reg. #          Student Name             CGPA       Email ID              Phone #         Sign.
+                        Muhammad Mudassir Bhatti                                                    Mudassir
+(i)     23K-3003                                 2.87       k233003@nu.edu.pk     03116857505
+                        (Group Leader)
+(ii)    22K-4435        Shahryar                 2.59       k224435@nu.edu.pk     03171394691       Shahryar
+
+(iii)   23K-0028        Zaid                        2.50    k230028@nu.edu.pk     03323426024         Zaid
+
+.
+
+
+
+
+                                                2
+Project Abstract
+Oral Squamous Cell Carcinoma (OSCC) is among the most prevalent forms of head and
+neck cancer worldwide and is the leading cancer diagnosed in Pakistani males and the
+second most common among females, driven largely by widespread use of tobacco, betel
+quid, and areca nut. Delayed diagnosis, caused by limited access to specialist oncologists
+and the time-consuming, subjective nature of manual histopathological examination,
+remains the principal cause of poor prognosis in this region. Although several studies
+have applied Convolutional Neural Networks (CNNs) to oral cancer histopathology, a
+systematic, head-to-head comparison of CNN-based and Vision Transformer (ViT)-based
+architectures on OSCC-specific datasets, combined end-to-end with a patient-facing
+support system, is still largely missing from the literature; this constitutes the research
+gap addressed by this project. This Final Year Project proposes Health Intelligence, a
+web-based system that (i) classifies Hematoxylin and Eosin (H&E)-stained histopathology
+images as OSCC or nonOSCC using both CNN architectures (ResNet, EfficientNet,
+DenseNet) and a Vision Transformer, benchmarking them using accuracy, precision, recall,
+F1-score, and AUCROC; (ii) recommends the nearest oncology and ENT hospitals to a
+flagged patient using a curated database of Pakistani oncology facilities and a
+geolocation-based nearest-facility algorithm; and (iii) provides an AI chatbot that supports
+patients with medication reminders, dietary and lifestyle precautions, and moral support.
+Publicly available histopathology datasets, including repositories hosted on Zenodo,
+GitHub, and Kaggle, will be used for model development, training, and evaluation. The
+expected contribution of this work is twofold: a validated comparative study of CNN
+versus ViT performance on OSCC classification, and a deployable, Pakistan-contextualized
+decision-support web application that is, to the best of our knowledge, among the first to
+combine OSCC detection, geolocation-based hospital recommendation, and
+conversational patient support within a single integrated system.
+
+
+
+
+                                             3
+1. Introduction
+
+Digital pathology and medical image analysis form a rapidly growing research domain in
+which artificial intelligence (AI) is used to assist pathologists in examining tissue samples
+for signs of disease. Within this domain, the automated classification of histopathological
+images for cancer detection has emerged as one of the most active and clinically relevant
+applications of deep learning. This project situates itself in the intersection of computer
+vision, deep learning, and oncology-focused health informatics, specifically targeting Oral
+Squamous Cell Carcinoma (OSCC), the most common malignant tumor of the oral cavity.
+This research domain is important because OSCC accounts for over ninety percent of all
+oral cancers and continues to be diagnosed late in most developing countries, including
+Pakistan, where oral cancer is the most frequently diagnosed cancer among men and the
+second most common among women. Histopathological examination of biopsy tissue
+remains the diagnostic gold standard, but it is invasive, time-consuming, and subject to
+inter-observer variability among pathologists, particularly in a country such as Pakistan
+where there is an acute shortage of trained oral pathologists relative to the number of
+at-risk patients.
+The current situation is characterized by two related deficiencies. First, deep learning
+research on OSCC histopathology has so far concentrated almost exclusively on CNN
+architectures, with comparatively little systematic benchmarking against modern Vision
+Transformer (ViT) architectures that can model long-range dependencies across a tissue
+image rather than relying purely on local convolutional receptive fields. Second, even
+
+
+                                             4
+where accurate detection models exist, there is no readily available system that connects
+a positive or suspicious OSCC screening result to an actionable next step for a patient in
+Pakistan, such as identifying a nearby oncology facility or providing ongoing support
+during treatment.
+Computational and AI-driven research is directly relevant here because it can standardize
+and accelerate the interpretation of histopathological images, reduce the diagnostic
+burden on a limited pool of specialists, and, when combined with geolocation data and
+conversational AI, extend the benefits of early detection into practical, patient-centered
+support. This project therefore proposes an integrated, three-module web application,
+Health Intelligence, that performs OSCC detection from histopathology images using both
+CNN and ViT architectures, recommends nearby oncology hospitals based on the
+patient's location, and offers an AI chatbot for medication reminders, precautionary
+guidance, and moral support.
+
+
+2. Problem Statement
+Existing deep learning research on Oral Squamous Cell Carcinoma (OSCC) histopathology
+has predominantly evaluated CNN-based architectures in isolation, with only limited and
+inconsistent comparison against Vision Transformer (ViT)-based architectures on
+OSCCspecific datasets. This leaves a methodological gap: it is not clearly established,
+under a common experimental protocol and a consistent set of evaluation metrics,
+whether ViTbased models offer a meaningful advantage over CNN-based models for
+OSCC histopathology classification, or whether the additional computational cost of
+transformerbased architectures is justified for this particular task.
+A second, complementary gap exists at the systems level. Even where an OSCC
+classification model performs well, there is no publicly documented,
+Pakistancontextualized system that closes the loop between a screening result and
+patient action: guiding a patient (or the healthcare worker assisting them) toward the
+nearest appropriate oncology facility, and supporting the patient with continued
+medication adherence, dietary precautions, and moral support during an emotionally
+difficult period. The absence of such an integrated pipeline constitutes a research and
+development gap that this project directly addresses through Health Intelligence, which
+combines a rigorously benchmarked CNNversus-ViT classification module with a
+geolocation-based hospital recommendation module and an AI-driven patient-support
+chatbot.
+
+
+3. Related Work
+Background of the Research Domain
+Oral cancer represents a substantial disease burden in Pakistan, where it is the most
+frequently diagnosed cancer among men and the second most common among women,
+with tobacco use, betel quid chewing, and areca nut consumption identified as the
+dominant risk factors [9]. Manual histopathological examination remains the diagnostic
+gold standard for OSCC, but is time-consuming and subject to considerable inter-observer
+variability, motivating the development of automated, deep learning-based diagnostic
+support tools.
+
+
+
+                                            5
+Existing Methods and Approaches
+Reference / Paper Title &            Methodology                      Key Findings                    Limitations                Other Important Details
+        Authors
+[1] He et al. — Deep           Residual learning with          Residual networks ease         General computer-vision           CVPR 2016. ImageNet and
+residual learning for image    shortcut connections;           optimization of very deep      benchmark rather than             CIFAR-10 experiments; also
+recognition                    ResNet architectures up to      models and improve             OSCC-specific                     reported COCO transfer
+                               152 layers; evaluated for
+                                                               recognition performance. A     histopathology; results           results. Forms the ResNet
+                               image recognition and
+                               transfer to                     152-layer ResNet ensemble      depend on large-scale             family used as a CNN
+                               detection/segmentation.         achieved 3.57% top-5 error     pretraining and do not            baseline in later
+                                                               on ImageNet test data.         directly establish                medical-imaging work.
+                                                                                              performance for oral
+                                                                                              pathology.
+[2] Tan & Le —                 Neural architecture search      EfficientNet-B7 reached        Developed and validated           ICML 2019, pp. 6105–
+EfficientNet: Rethinking       for a baseline network plus     84.4% top-1 / 97.1% top-5      primarily on general image        6114. ImageNet,
+model scaling for              compound                        ImageNet accuracy while        datasets; it does not             CIFAR-100, Flowers and
+                               scaling that jointly balances   being reported as 8.4×         address OSCC-
+convolutional neural                                                                                                            additional transferlearning
+                               depth, width, and input         smaller and 6.1× faster at     specific stain variation, class
+networks                                                       inference than the                                               datasets. EfficientNet is one
+                               resolution across                                              imbalance, or clinical
+                                                               compared ConvNet;                                                of the proposed CNN
+                               EfficientNet variants.                                         deployment constraints.
+                                                               strong transfer performance                                      families in the FYP.
+                                                               was also reported.
+
+[3] Dosovitskiy et al. — An    Vision Transformer (ViT):       A pure Transformer can         ViT benefits substantially        ICLR 2021. Evaluated on
+image is worth 16×16           split images into fixedsize     perform strongly for image     from large-scale pretraining      ImageNet, ImageNetReaL,
+words: Transformers for        patches, linearly embed         recognition when               and has weaker built-in           CIFAR-100 and VTAB; the
+image recognition at scale     patches as tokens, and          pretrained on large datasets   locality/translation              FYP uses ViT as the
+                               apply a Transformer             and transferred to smaller     inductive bias than CNNs,         transformer-side
+                               encoder with self-attention     benchmarks; the study          which can matter for              comparator against CNN
+                               for image classification.       demonstrated competitive       smaller medical datasets.         models.
+                                                               results without relying on
+                                                               CNN feature extractors.
+[4] Kumar, Kumar & Jindal      Compared ResNet50,              EfficientNetB0 achieved the    Study is a binary                 Scientific Reports 2026.
+— Efficient deep learning      DenseNet201,                    highest reported accuracy      classification benchmark on       10,000 histopathological
+models for OSCC                EfficientNetB0 and              (97.6%) and ROC-AUC            one 10,000-image dataset;         images; compares several
+                                                               (0.9963), followed by                                            modern CNN
+classification in              ConvNeXt-Tiny for binary                                       performance may not
+                                                               ConvNeXtTiny (95.92%),                                           architectures. Directly
+histopathological images       benign-versus-carcinoma         DenseNet201 (86.08%) and       transfer directly across
+                                                                                                                                relevant to the proposed
+                               classification using            ResNet50 (71.52%).             datasets, institutions,
+                                                                                                                                CNN benchmarking track.
+                               histopathology images.                                         staining protocols or clinical
+                                                                                              settings.
+[5] Akram et al. — Deep        Deep Visual Detection           EfficientNetB3 was             Evaluation is limited to the      Scientific Reports 2026.
+visual detection system        System using                    strongest on both datasets:    selected public datasets and      Kaggle Oral Cancer
+for oral squamous cell         EfficientNetB3,                 97.05% test accuracy for       CNN family; high benchmark        Detection: 5,192 images;
+carcinoma                      DenseNet121 and                 binary classification and      performance does not by           NDB-UFES: 3,763 images.
+                               ResNet50, with image            97.16% for the NDB-UFES        itself establish clinical         Binary and multiclass
+                               preprocessing,                  multiclass task, with          validity or crossinstitutional    experiments.
+                               augmentation,
+                                                               corresponding high             generalization.
+                               EarlyStopping and
+                                                               precision/recall/F1 values.
+                               ReduceLROnPlateau.
+
+Reference / Paper Title &            Methodology                      Key Findings                    Limitations                Other Important Details
+        Authors
+[6] Jagathesh & Narayanan      CBA-TransNet combines a         On the evaluated               Hybrid design makes it            Frontiers in Artificial
+— Attentionaided hybrid        ResNet50 CNN backbone           5,192image dataset, the        difficult to isolate the          Intelligence 2026. Public
+transformer                    with a ViT encoder and          model reported 98.97% test     contribution of CNNs versus       5,192-image
+network for OSCC               applies                                                        ViT alone; the study uses a
+                                                               accuracy, 99.15% precision,                                      histopathology dataset; also
+classification                 Convolutional Block                                            specific public dataset and a
+                                                               98.90% sensitivity, 99.05%      70:30 split, limiting direct     compares with ResNet50,
+                               Attention Module (CBAM)
+                                                               specificity and 99.02%         cross-study comparability.        ViT and other models.
+                               to refine channel and spatial
+                                                               F1-score.                                                        Strongly relevant to
+                               attention.
+                                                                                                                                CNN–ViT hybrid literature.
+[7] Ramya & Minu — OSCC        DeTr-DiGAtt framework           Reported 98.59% accuracy,      The pipeline is complex and       Frontiers in Artificial
+grading                        combines GAN                    97.97% Dice score and          combines multiple                 Intelligence 2025.
+classification using deep      augmentation, adaptive          98.08% IoU for OSCC            preprocessing,                    Targets three OSCC grades:
+transformer encoder            bilateral filtering,                                           segmentation, optimization        well-, moderately- and
+                                                               grading classification.
+assisted dilated convolution   improved multi-encoder                                         and classification                poorly differentiated.
+                               residual squeeze U-Net                                         components, making
+with global attention                                                                                                           Addresses grading rather
+                               segmentation,                                                  isolated attribution and
+                                                                                                                                than only binary detection.
+                               transformer-encoderassiste                                     comparison with simpler
+                               d dilated convolution with                                     classifiers difficult.
+                               global
+                               attention, and adaptive
+                               Grey Lag Goose
+                               optimization for tuning.
+
+
+
+
+                                                                            6
+[8] Li — Fusion                CrossViT extracts multiscale   The proposed hybrid feature     Use of handcrafted expert        Frontiers in Oncology 2025.
+featurebased hybrid            features; expertcrafted FCH,   model achieved 99.36% and       features and a multi-stage       CrossViT dualbranch
+methods for diagnosing         LBP and GLCM features are      99.59% accuracy on two          hybrid pipeline increases        features plus 818 fused
+                               fused with CrossViT features
+OSCC in histopathological                                     independent OSCC datasets,      complexity and makes the         features (768 FCH + 26 LBP
+                               and classified with an
+images                         ANN.                           respectively.                   approach less directly           + 24 GLCM). Evaluated on
+                                                                                              comparable with end-toend        two independent OSCC
+                                                                                              CNN/ViT models.                  datasets.
+[9] Anwar et al. — Oral        Observational                  Among 186 patients at a         Single tertiary-center cohort    PLOS ONE 2020. 186
+cancer:                        clinicopathological study      tertiary hospital in            and observational design; it     OSCC patients in Karachi,
+Clinicopathological features   using structured               Karachi, 77.4% reported         is not an                        Pakistan. Provides
+and associated risk factors    questionnaires, descriptive    habitual chewing; male sex,     imaging/deep-learning            Pakistanspecific clinical and
+in a high-risk population in   analysis and regression        socioeconomic status and        study and therefore does         riskfactor context
+Pakistan                       analysis to examine            chewingrelated factors were     not provide                      supporting the project
+                               socioeconomic factors,         associated with disease         modelperformance                 motivation.
+                               chewing habits, tumor site     characteristics and latestage   evidence.
+                               and stage.                     presentation.
+[10] OSCC                      Public Multi-OSCC              Provides a public resource      Dataset characteristics,         Zenodo 2025. 1,325 OSCC
+Histopathology Image           histopathology dataset with    for OSCC                        labels and acquisition           patients; six highresolution
+Dataset — Zenodo               patient-level metadata and     diagnostic/prognostic           context must be checked          images per patient at ×200,
+                                                              model development and
+                               predefined                                                     carefully for the specific       ×400 and ×1000 covering
+                                                              reproducible benchmarking.
+                               train/validation/test split                                    task; it is not itself a         tumor core and margin;
+                               information.                                                   predictive method or clinical    metadata and split files are
+                                                                                              validation study.                provided.
+[11] Guan — OSCC-              Repository providing           Supports reproducible           Repository is a data/code        GitHub repository.
+PathologyImageDataset          dataset documentation,         dataset access and              resource rather than an          Random seed 42 is specified
+(GitHub)                       metadata, split files and      standardized 70:15:15           independent clinical             for a 70:15:15 split; links to
+                                                                                              study; reproducibility still
+                               baseline implementation        train/validation/test                                            the Zenodo dataset and
+                                                                                              depends on following the
+                               resources associated with      splitting with documented                                        provides metadata/baseline
+                                                                                              documented split and
+                               the Multi-OSCC dataset.        metadata.                                                        resources.
+                                                                                              preprocessing procedures.
+
+[12] Kebede — Oral             Public Kaggle image dataset    Provides an additional          Dataset provenance, class        Kaggle dataset by A. F.
+Cancer Histopathological       intended for oral cancer       public data source that can     composition, duplication         Kebede. Used in the
+Images (Kaggle)                histopathology image           support model training or       risk and acquisition             proposal as one of the
+                               classification; used as an     cross-dataset evaluation for    protocol should be               public repositories
+                               accessible source of labeled   oral cancer image               assessed before combining        considered for model
+                               images.                        classification.                 it with other repositories; it   development, training and
+                                                                                              is not a peer-reviewed           evaluation.
+                                                                                              modeling study.
+
+A growing body of work has applied CNN transfer learning to OSCC histopathology
+classification. Kumar et al. compared four CNN architectures — ResNet50, DenseNet201,
+EfficientNetB0, and ConvNeXt_Tiny — on a 10,000-image OSCC histopathology dataset,
+reporting that EfficientNetB0 achieved the strongest overall performance, with
+ConvNeXt_Tiny (a CNN architecture that borrows several transformer-inspired design
+principles) placing a close second [4]. Similarly, Akram et al. proposed a Deep Visual
+Detection System that benchmarked EfficientNetB3, DenseNet121, and ResNet50 across
+two public datasets, Kaggle and NDB-UFES, finding that EfficientNetB3 consistently
+outperformed the other two CNNs on both binary and multi-class OSCC classification
+tasks [5].
+More recent work has begun to directly incorporate Vision Transformers. Jagathesh and
+Narayanan proposed a Convolutional Block Attention-aided Transformer Network that
+fuses a ResNet50 backbone with a ViT encoder augmented by a convolutional attention
+module, arguing that the hybrid design captures both local texture and global tissue
+context better than either architecture alone [6]. Ramya and Minu introduced a
+transformer-encoderassisted dilated convolution framework with global attention for
+OSCC grading classification, motivated by the observation that most prior CNN-only
+pipelines struggle to generalize across grading categories [7]. Li proposed a hybrid model
+that fuses CrossAttention Vision Transformer (CrossViT) features with manually
+engineered histopathological features, reporting accuracy above 99% on two
+independent OSCC datasets [8].
+
+
+
+
+                                                                           7
+Limitations of Existing Research
+Across this body of work, three limitations recur. First, comparisons between CNN and ViT
+architectures are typically embedded within the design of a single hybrid model rather
+than reported as a systematic, side-by-side benchmark using a shared dataset,
+preprocessing pipeline, and evaluation protocol, which makes it difficult to draw general
+conclusions about the relative merits of the two paradigms for OSCC specifically. Second,
+almost all reviewed studies restrict their contribution to the classification model itself and
+stop short of any downstream patient-facing functionality, such as care navigation or
+post-screening support. Third, none of the reviewed studies are contextualized for
+Pakistan, despite the country's disproportionately high OSCC burden and limited access to
+specialist oncology facilities outside major cities. Health Intelligence is designed to
+directly address these three limitations by (i) benchmarking CNN and ViT architectures
+under an identical protocol on OSCC histopathology data, and (ii) extending the resulting
+classification model into a Pakistan-specific, location-aware hospital recommendation and
+patient-support system.
+
+
+4. Project Rationale
+Oral cancer is a largely preventable but frequently late-diagnosed disease in Pakistan,
+where the shortage of trained oral pathologists and specialist oncology centers means
+that many patients only discover their condition once it has progressed to an advanced,
+harder-to-treat stage. The motivation for this project is to reduce that diagnostic delay by
+pairing an accurate, well-benchmarked AI classification model with practical,
+location-aware guidance that helps a patient act on a screening result rather than simply
+receiving it. Through this project, the team hopes to gain hands-on experience in
+comparative deep learning research (specifically CNN versus ViT benchmarking on
+medical images), in building and integrating a full-stack, AI-powered web application, and
+in designing patient-centered health-support features responsibly and empathetically.
+
+
+a. Aims and Objectives
+    •​ To develop and preprocess a high-quality, unified OSCC histopathology image
+       dataset drawn from public repositories for model training and evaluation.
+    •​ To design, train, and evaluate CNN-based (ResNet/EfficientNet/DenseNet) and
+       Vision Transformer-based models for binary OSCC classification, comparing their
+       performance using accuracy, precision, recall, F1-score, and AUC-ROC.
+    •​ To build a geolocation-based hospital recommendation module that maps a
+       patient's location to the nearest oncology/ENT facilities from a curated Pakistani
+       hospital database.
+    •​ To design an AI-driven chatbot that supports patients with medication reminders,
+       dietary and lifestyle precautions, and moral support.
+    •​ To integrate all three modules into a single, usable web application, and to
+       evaluate the system's overall usability and diagnostic reliability.
+
+b. Scope of the Project
+The scope of FYP-I covers problem formulation, dataset acquisition and preprocessing,
+literature review, and the design of the system architecture, together with initial
+
+
+                                              8
+implementation and training of baseline CNN and ViT classification models. The scope of
+FYP-II (subsequent semester) will extend this to full comparative benchmarking of the
+classification models, complete development of the hospital recommendation module
+(including the Pakistan-wide oncology facility database and nearest-facility algorithm),
+development and integration of the patient-support chatbot, end-to-end web application
+integration, and system-level testing. The project deliverables are a working web
+application, a benchmarked OSCC classification pipeline, a curated hospital-location
+database for Pakistan, and a documented comparative study of CNN versus ViT
+performance on OSCC histopathology data. Clinical deployment, regulatory certification,
+and large-scale multi-hospital validation are explicitly out of scope for this Final Year
+Project.
+
+
+5. Proposed Methodology and Architecture
+The proposed system, Health Intelligence, consists of three interconnected modules: (a) a
+histopathology image classification pipeline comparing CNN and ViT architectures, (b) a
+geolocation-based hospital recommendation engine, and (c) an AI-powered
+patient-support chatbot, all accessed through a single web application front end. a.
+Classification a. Pipeline
+The classification pipeline follows the standard stages: Data Collection → Data
+Preprocessing → Feature Extraction → Model Development → Training → Validation →
+Testing → Evaluation → Interpretation. H&E-stained OSCC histopathology images will be
+collected from public repositories (Section 9). Preprocessing will include patch
+extraction/resizing, normalization, and data augmentation (flipping, rotation) to address
+class imbalance. Two families of models will then be trained on identical data splits: (i)
+CNN architectures — ResNet50, EfficientNet, and DenseNet — fine-tuned via transfer
+learning from ImageNet weights, and (ii) a Vision Transformer (ViT) fine-tuned on the
+same patches. Both families will be trained with the same optimizer settings, batch sizes,
+and early-stopping criteria to ensure a fair comparison. Model performance will be
+evaluated and compared using accuracy, precision, recall, F1-score, and AUC-ROC, along
+with confusion-matrix analysis.
+
+b. Hospital Recommendation Module
+Once an image is classified, the pipeline below determines the recommended next step
+for the patient:
+
+
+
+
+                                            9
+     Fig. 1. High-level system flow from histopathology image to hospital recommendation.
+
+The pipeline in Fig. 1 begins with the histopathology image being passed to the CNN/ViT
+classification model. If SCC is detected, the system flags the case as "medical review
+recommended" and proceeds to request the patient's location. This location is matched
+against a curated database of oncology and ENT hospitals across Pakistan, and a
+distancecalculation algorithm (using the haversine formula over hospital
+latitude/longitude coordinates, refined with a mapping API for road-network distance
+where available) ranks and returns the nearest suitable facilities, along with their name,
+distance, and contact details, e.g., "Hospital 1 — 3.2 km", "Hospital 2 — 5.7 km",
+"Hospital 3 — 8.1 km". Planned extensions to this module include filtering by facility type
+(oncology center, ENT clinic, general hospital with oncology ward), display of estimated
+travel time, and integration of user reviews/ratings where available.
+
+
+c. AI Patient-Support Chatbot
+The chatbot module is designed to support patients after a positive or suspicious
+screening result. It will provide (i) medication reminders scheduled around a
+patient-entered treatment plan, (ii) precautionary guidance on diet and lifestyle choices
+relevant to oral cancer patients (e.g., avoiding tobacco, betel quid, and irritant foods), and
+(iii) general moral support through empathetic, non-diagnostic conversational responses.
+The chatbot will be built on a large language model accessed via API, with careful prompt
+design and guardrails to ensure it does not attempt to replace clinical advice, and that it
+consistently directs the patient toward the recommended hospitals and their treating
+physician for any decision requiring medical judgment.
+
+d. Web Application Architecture
+The complete system will be delivered as a web application with a React.js-based front
+end, a REST API back end (Node.js/FastAPI), a relational/NoSQL database for the hospital
+directory and user data, and a separate model-serving component that hosts the trained
+
+
+                                             10
+CNN and ViT classifiers for inference. The three modules described above communicate
+through this back end, allowing a single user session to move from image upload, to
+classification result, to hospital recommendation, to ongoing chatbot support.
+
+
+6. Individual Tasks
+The expected individual task list with the tentative plan across both FYP-I and FYP-II
+(September 2026 to May 2027) is given below. Team members will additionally support
+one another on cross-cutting tasks such as testing and documentation.
+Team Member              Activity                                                              Tentative Date
+Muhammad Mudassir Bhatti
+                         Activity 1: Requirements gathering and elicitation                    Sep 2026
+(Group Leader)
+                         Activity 2: Software Requirement Specification (SRS) document and
+                                                                                               Sep – Oct 2026
+                         system architecture design
+                         Activity 3: Design and development of the geolocation-based
+                                                                                               Nov 2026 – Jan
+                         hospital recommendation module and Pakistan oncology-hospital
+                                                                                               2027
+                         database
+                         Activity 4: Front-end and back-end web application integration of all
+                                                                                               Feb – Mar 2027
+                         three modules
+                         Activity 5: System-level testing, documentation, and final report
+                                                                                               Apr – May 2027
+                         compilation
+                         Activity 1: Dataset acquisition, cleaning, and preprocessing (patch
+Shahryar                                                                                       Sep – Oct 2026
+                         extraction, augmentation)
+                         Activity 2: Development of CNN-based classification models
+                                                                                               Nov – Dec 2026
+                         (ResNet, EfficientNet, DenseNet)
+                         Activity 3: Training and hyperparameter tuning of CNN models          Jan – Feb 2027
+
+                            Activity 4: Evaluation of CNN models using accuracy, precision,
+                                                                                                   Mar 2027
+                            recall, F1-score, and AUC-ROC
+                            Activity 5: Comparative performance analysis and results write-up
+                                                                                                   Apr – May 2027
+                            (CNN vs. ViT)
+                            Activity 1: Literature review and dataset preparation for the Vision
+Zaid                                                                                               Sep – Oct 2026
+                            Transformer track
+                            Activity 2: Development of the Vision Transformer (ViT) classification
+                                                                                                   Nov – Dec 2026
+                            model
+                            Activity 3: Training and evaluation of the ViT model                   Jan – Feb 2027
+
+                            Activity 4: Design and development of the AI patient-support
+                            chatbot (medication reminders, precautions, moral support)            Feb – Mar 2027
+                            Activity 5: Chatbot integration, back-end testing, and final report
+                                                                                                  Apr – May 2027
+                            contributions
+
+
+
+
+7. Gantt Chart
+Fig. 2 (Table II) presents the tentative Gantt chart for the full project duration, from
+September 2026 to May 2027, spanning FYP-I and FYP-II. The shaded segments indicate
+the active duration of each task, showing which tasks are executed in parallel (e.g., CNN
+and ViT model development proceed concurrently once preprocessing is complete) and
+
+
+                                                   11
+which proceed in series (e.g., comparative evaluation follows the completion of both
+modeltraining tracks, and web application integration follows completion of the
+individual modules).
+                         TABLE II. PROJECT TIMELINE (SEPTEMBER 2026 – MAY 2027)
+            Task                 Sep '26   Oct '26   Nov '26   Dec '26   Jan '27   Feb '27   Mar '27   Apr '27   May '27
+Requirements gathering & SRS
+
+System architecture & design
+
+Dataset collection &
+
+             Task                Sep '26   Oct '26   Nov '26   Dec '26   Jan '27   Feb '27   Mar '27   Apr '27   May '27
+preprocessing
+
+CNN model development &
+training
+ViT model development &
+training
+Comparative model evaluation
+
+Hospital database &
+recommendation module
+Chatbot design &
+development
+Web application integration
+
+System testing & validation
+
+Final report writing &
+submission
+ Fig. 2. Gantt chart of tasks and durations across the project timeline (shaded segments indicate
+                                  the active months for each task).
+
+
+8. Tools and Technologies
+    •​ Programming languages: Python (model development), JavaScript/TypeScript
+       (web application)
+    •​ Deep learning frameworks: TensorFlow / Keras and PyTorch
+    •​ Model architectures: ResNet50, EfficientNet, DenseNet (CNN); Vision Transformer
+       (ViT) via the HuggingFace Transformers library
+    •​ Image processing: OpenCV, Scikit-image, Albumentations (augmentation)
+    •​ Data handling and evaluation: NumPy, Pandas, Scikit-learn, Matplotlib/Seaborn
+    •​ Web application: React.js front end; Node.js/FastAPI back end (REST API)
+    •​ Database: MongoDB/PostgreSQL for the hospital directory, user data, and chat
+       history
+    •​ Geolocation and distance calculation: Haversine-based distance computation, with
+       a mapping API (e.g., Google Maps/OpenStreetMap) for road-network distance and
+       geocoding
+
+
+
+                                                       12
+    •​ Chatbot: Large Language Model accessed via API, with a retrieval layer for
+       OSCC-specific precautionary content
+    •​ Version control and collaboration: Git/GitHub, Figma (UI/UX design), Trello/Jira
+       (task tracking)
+    •​ Deployment: Docker containerization; cloud hosting (AWS/GCP/Azure) for model
+       serving and the web back end
+
+
+9. Expected Results
+This project is expected to produce: (i) a comparative performance table quantifying the
+accuracy, precision, recall, F1-score, and AUC-ROC of CNN-based versus ViT-based models
+on OSCC histopathology classification, together with an analysis of the trade-offs
+between the two paradigms in terms of accuracy and computational cost; (ii) a
+functioning geolocation-based hospital recommendation module capable of returning
+ranked, distanceannotated oncology/ENT facilities for a given patient location within
+Pakistan; (iii) a working AI chatbot prototype providing medication reminders,
+dietary/lifestyle precautions, and supportive conversation for OSCC patients; and (iv) a
+fully integrated web application demonstrating the end-to-end flow from histopathology
+image upload to classification result, hospital recommendation, and ongoing chatbot
+support. Collectively, these deliverables are expected to demonstrate that combining a
+rigorously benchmarked detection model with practical, location-aware patient support is
+both technically feasible and of direct relevance to reducing diagnostic and
+care-navigation delay for OSCC patients in Pakistan.
+
+
+10. References
+[1]​ K. He, X. Zhang, S. Ren, and J. Sun, "Deep residual learning for image recognition," in Proc.
+     IEEE Conf. Comput. Vis. Pattern Recognit. (CVPR), 2016, pp. 770–778.
+[2]​ M. Tan and Q. V. Le, "EfficientNet: Rethinking model scaling for convolutional neural
+     networks," in Proc. 36th Int. Conf. Mach. Learn. (ICML), 2019, pp. 6105–6114.
+[3]​ A. Dosovitskiy et al., "An image is worth 16x16 words: Transformers for image recognition at
+     scale," in Proc. Int. Conf. Learn. Represent. (ICLR), 2021.
+[4]​ J. Kumar, M. Kumar, and M. K. Jindal, "Efficient deep learning models for oral squamous cell
+     carcinoma classification in histopathological images," Sci. Rep., vol. 16, art. 21734, 2026.
+[5]​ K. Akram, M. Aslam, T. Waheed, N. Ayesha, F. S. Alamri, A. R. Mirdad, and A. Rehman, "Deep
+     visual detection system for oral squamous cell carcinoma," Sci. Rep., vol. 16, art. 4219, 2026.
+[6]​ M. Jagathesh and S. Narayanan, "Attention-aided hybrid transformer network for oral
+     squamous cell carcinoma classification using histopathology images," Front. Artif. Intell., vol.
+     9, art. 1751520, 2026.
+[7]​ S. Ramya and R. I. Minu, "Oral squamous cell carcinoma grading classification using deep
+     transformer encoder assisted dilated convolution with global attention," Front. Artif. Intell.,
+     vol. 8, art. 1575427, 2025.
+[8]​ J. Li, "Fusion feature-based hybrid methods for diagnosing oral squamous cell carcinoma in
+     histopathological images," Front. Oncol., vol. 15, art. 1551876, 2025.
+
+
+
+
+                                                 13
+[9]​ N. Anwar et al., "Oral cancer: Clinicopathological features and associated risk factors in a
+     high-risk population presenting to a major tertiary care center in Pakistan," PLoS ONE, vol.
+     15, no. 8, e0236359, 2020.
+[10]​ "OSCC Histopathology Image Dataset," Zenodo, 2025. [Online]. Available:
+      https://zenodo.org/records/16842637
+[11]​ J. Guan, "OSCC-PathologyImageDataset," GitHub repository. [Online]. Available:
+      https://github.com/guanjinquan/OSCC-PathologyImageDataset
+[12]​ A. F. Kebede, "Oral Cancer Histopathological Images," Kaggle. [Online]. Available:
+    https://www.kaggle.com/datasets/ashenafifasilkebede/dataset
+
+
+
+
+                                                14
+

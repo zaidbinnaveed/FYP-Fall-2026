@@ -1,0 +1,193 @@
+name: CI
+
+on:
+  push:
+    branches: ["phase/**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.13.7"
+  SEAWEEDFS_IMAGE: chrislusf/seaweedfs:4.54
+
+jobs:
+  changes:
+    name: Detect changed areas
+    runs-on: ubuntu-24.04
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+      inference: ${{ steps.filter.outputs.inference }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: dorny/paths-filter@v4.0.3
+        id: filter
+        with:
+          filters: |
+            shared: &shared
+              - '.github/workflows/**'
+            api:
+              - *shared
+              - 'api/**'
+              - 'infrastructure/**'
+            inference:
+              - *shared
+              - 'inference/**'
+            frontend:
+              - *shared
+              - 'frontend/**'
+
+  api:
+    name: API - lint, types, tests
+    needs: changes
+    if: needs.changes.outputs.api == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: api/uv.lock
+      - run: uv sync --locked
+      - name: Ruff lint
+        run: uv run ruff check .
+      - name: Ruff format
+        run: uv run ruff format --check .
+      - name: Mypy (strict)
+        run: uv run mypy
+      - name: Architecture contracts (import-linter)
+        run: uv run lint-imports
+      - name: Start SeaweedFS for storage integration tests
+        working-directory: .
+        run: |
+          docker run -d --name storage --hostname storage -p 127.0.0.1:8333:8333 \
+            -e STORAGE_ACCESS_KEY_ID=ci-access-key -e STORAGE_SECRET_ACCESS_KEY=ci-secret-key \
+            -v "$PWD/infrastructure/storage/entrypoint.sh:/opt/oscc/entrypoint.sh:ro" \
+            --entrypoint /bin/sh "$SEAWEEDFS_IMAGE" /opt/oscc/entrypoint.sh
+          for i in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:8333/healthz >/dev/null 2>&1 && exit 0
+            sleep 2
+          done
+          docker logs storage
+          exit 1
+      - name: Pytest (unit + storage integration)
+        env:
+          STORAGE_INTEGRATION_ENDPOINT_URL: http://127.0.0.1:8333
+          INTEGRATION_STORAGE_ACCESS_KEY_ID: ci-access-key
+          INTEGRATION_STORAGE_SECRET_ACCESS_KEY: ci-secret-key
+        run: uv run pytest --cov=app --cov-report=term-missing
+
+  inference:
+    name: Inference - lint, types, tests
+    needs: changes
+    if: needs.changes.outputs.inference == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: inference
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: inference/uv.lock
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy
+      - run: uv run lint-imports
+      - run: uv run pytest
+
+  frontend:
+    name: Frontend - lint, types, tests, build
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  secrets:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: "8.30.1"
+        run: |
+          curl -sSfL -o gitleaks.tgz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          tar -xzf gitleaks.tgz gitleaks
+          sudo mv gitleaks /usr/local/bin/
+      - name: Scan full history
+        run: gitleaks git --redact --verbose --exit-code 1 .
+
+  compose:
+    name: Dev stack - all services healthy
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Create dev .env from the example
+        run: cp infrastructure/.env.example infrastructure/.env
+      - name: Build and start the stack
+        run: docker compose -f infrastructure/docker-compose.dev.yml up --build --detach --wait --wait-timeout 600
+      - name: Check every service is healthy
+        run: bash infrastructure/scripts/compose_check.sh
+      - name: Show service state and logs
+        if: always()
+        run: |
+          docker compose -f infrastructure/docker-compose.dev.yml ps
+          docker compose -f infrastructure/docker-compose.dev.yml logs --no-color --tail 200
+      - name: Tear down
+        if: always()
+        run: docker compose -f infrastructure/docker-compose.dev.yml down --volumes
+
+  ci-ok:
+    name: CI result
+    if: always()
+    needs: [api, inference, frontend, secrets, compose]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Fail if any required job failed or was cancelled
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "job results: $RESULTS"
+          for r in $RESULTS; do
+            if [ "$r" = "failure" ] || [ "$r" = "cancelled" ]; then exit 1; fi
+          done

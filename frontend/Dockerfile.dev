@@ -1,0 +1,12 @@
+# Development image: Vite dev server with hot reload (production serves static files via Nginx, D7).
+FROM node:24.22.3-alpine
+WORKDIR /srv/frontend
+# Vite writes a temporary bundled config next to vite.config.ts, so the app directory must be
+# owned by the unprivileged user that runs the server.
+RUN chown node:node /srv/frontend
+USER node
+COPY --chown=node:node package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY --chown=node:node . .
+EXPOSE 5173
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

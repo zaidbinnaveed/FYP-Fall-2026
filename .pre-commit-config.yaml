@@ -1,0 +1,59 @@
+# Install once:  uv tool install pre-commit  &&  pre-commit install
+# Run on everything:  pre-commit run --all-files
+# Type checks and tests run in CI (and via each package's commands in README.md).
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+        args: ["--maxkb=2048"]
+      - id: check-merge-conflict
+      - id: check-yaml
+        args: ["--allow-multiple-documents"]
+      - id: check-toml
+      - id: check-json
+        exclude: ^frontend/tsconfig.*\.json$ # tsconfig allows comments
+      - id: end-of-file-fixer
+        exclude: ^docs/
+      - id: trailing-whitespace
+        exclude: ^docs/
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+        exclude: ^docs/
+      - id: detect-private-key
+      - id: no-commit-to-branch
+        args: ["--branch", "main"]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.5
+    hooks:
+      - id: ruff-check
+        args: ["--fix"]
+        files: ^(api|inference|ml_research)/
+      - id: ruff-format
+        files: ^(api|inference|ml_research)/
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
+  - repo: local
+    hooks:
+      - id: frontend-eslint
+        name: frontend eslint
+        language: system
+        entry: npm --prefix frontend run lint
+        files: ^frontend/.*\.(ts|tsx|js)$
+        pass_filenames: false
+      - id: frontend-prettier
+        name: frontend prettier
+        language: system
+        entry: npm --prefix frontend run format:check
+        files: ^frontend/
+        pass_filenames: false
+      - id: forbid-env-files
+        name: forbid committing .env files
+        language: fail
+        entry: ".env files must never be committed (NFR-SEC-09); use infrastructure/.env.example"
+        files: (^|/)\.env$
