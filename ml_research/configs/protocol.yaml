@@ -1,0 +1,72 @@
+# Shared experimental protocol (SDS Appendix A; plan section 6, R2 table).
+# EVERY model reads this file. Per-model files (resnet50.yaml, ...) may set ONLY `architecture`;
+# tests/test_protocol.py enforces that (FR-7.6).
+#
+# Values marked "SDS" come from SDS Appendix A. Values marked "default" fill gaps the documents
+# leave open; they are the team's working defaults and are confirmed or changed at gate G2.
+
+protocol_version: sds-appendix-a-v1
+
+seed: 42 # SDS: splitting, initialization and data loading
+
+data:
+  input_size: 224 # SDS: 224 x 224 patches
+  normalization:
+    mean: [0.485, 0.456, 0.406] # SDS: ImageNet mean
+    std: [0.229, 0.224, 0.225] # SDS: ImageNet std
+  stain_normalization: none # SDS: optional; decided by the R3 ablation (O4)
+  tiling: # O5 (accepted default); implemented in Phase R1
+    resize_if_both_sides_below: 448
+    patch_size: 224
+    min_tissue_fraction: 0.5
+    max_patches_per_image: 64
+  num_workers: 4
+
+augmentation: # SDS: training split only
+  horizontal_flip: true
+  vertical_flip: true
+  rotate_90: true
+  color_jitter: # SDS says "mild colour jitter"; magnitudes are a default
+    brightness: 0.1
+    contrast: 0.1
+    saturation: 0.1
+    hue: 0.02
+
+model:
+  pretrained: imagenet # SDS: ImageNet-pretrained initialization
+  num_logits: 1 # binary task, single logit
+
+optimizer:
+  name: adamw # SDS: AdamW, identical settings for all models
+  weight_decay: 0.05 # plan R2 table
+  betas: [0.9, 0.999] # plan: "betas default"
+  lr: 1.0e-4 # provisional; replaced by the shared sweep result in Phase R2 (O1)
+  lr_grid: [1.0e-5, 3.0e-5, 1.0e-4, 3.0e-4, 1.0e-3] # SDS range 1e-5..1e-3; plan grid
+
+scheduler:
+  name: cosine # plan R2 table: cosine with warm-up
+  warmup_epochs: 2 # default
+
+training:
+  batch_size: 32 # SDS (reduced uniformly for all models if memory requires; recorded)
+  max_epochs: 50 # SDS
+  early_stopping:
+    monitor: val_auc # SDS: validation AUC-ROC, image level
+    patience: 7 # SDS
+  amp: true # SDS / plan: mixed precision for all models (active on CUDA only)
+  loss: bce_with_logits_pos_weight # SDS: class-weighted loss; pos_weight = n_neg / n_pos (train)
+  deterministic: warn # full runs: deterministic algorithms where available, warn otherwise
+
+evaluation:
+  aggregation: mean_patch_probability # SDS: image probability = mean of patch probabilities
+  target_recall: 0.95 # O2 (accepted default); threshold calibration is Phase R3
+  inconclusive_margin: 0.05 # O3 (accepted default)
+
+smoke: # ADR-0001 G-e: CPU smoke run on synthetic images; never reportable
+  num_images: 32
+  split: [16, 8, 8] # train / val / test images, each half oscc and half non_oscc
+  epochs: 2
+  batch_size: 8
+  num_workers: 2
+  pretrained: false # random init: no downloads, works offline
+  deterministic: strict # torch.use_deterministic_algorithms(True)

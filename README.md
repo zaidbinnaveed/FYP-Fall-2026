@@ -19,7 +19,7 @@ Start here:
 api/             FastAPI public API (/api/v1), background worker, admin CLI
 inference/       Internal FastAPI inference service (stateless, no database)
 frontend/        React + TypeScript SPA (Vite)
-ml_research/     Research package `oscc_ml` and the `oscc-ml` CLI
+ml_research/     Research package `oscc_ml` and the `oscc-ml` CLI (configs/protocol.yaml = SDS Appendix A)
 infrastructure/  Docker Compose, .env.example, storage entrypoint, helper scripts
 docs/            Plan, SRS, SDS, proposal, ADRs, traceability
 ```
@@ -86,6 +86,10 @@ The example values are for development only. Never commit `.env`.
 | API lint / types / architecture | `cd api && uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run lint-imports` |
 | API migrations | `cd api && uv run alembic upgrade head` (the first revision arrives in Phase D1) |
 | Inference tests | `cd inference && uv run pytest` |
+| Research package install (CPU torch) | `cd ml_research && uv venv && bash scripts/install_pinned.sh --torch cpu --extra train --dev` (activate `.venv` afterwards) |
+| Research package install (lab GPU / Colab / Kaggle) | `--torch locked` on the lab GPU; `--torch platform` on Colab/Kaggle, via `ml_research/notebooks/oscc_ml_runner.ipynb` |
+| CPU smoke training (R0) | `oscc-ml train --model resnet50 --smoke` |
+| Research tests | `cd ml_research && pytest` |
 | Frontend dev server | `cd frontend && npm run dev` |
 | Frontend checks | `cd frontend && npm run lint && npm run typecheck && npm test && npm run build` |
 

@@ -1,0 +1,91 @@
+[project]
+name = "oscc-ml"
+version = "0.1.0"
+description = "OSCC Health Intelligence - CNN vs ViT research benchmark (package oscc_ml, CLI oscc-ml)"
+requires-python = ">=3.11,<3.14"
+# Light core: config, CLI, metrics. Heavy ML libraries live in extras so the inference image can
+# install only what preprocessing needs. Exact versions are pinned in uv.lock; ranges here let
+# Colab/Kaggle keep their preinstalled CUDA torch (see scripts/install_pinned.sh).
+dependencies = [
+    "numpy>=1.26",
+    "pillow>=10.4",
+    "pyyaml>=6.0",
+    "pydantic>=2.9",
+    "typer>=0.13",
+    "pandas>=2.2",
+    "scikit-learn>=1.5",
+]
+
+[project.optional-dependencies]
+# Shared preprocessing used by both training and the inference service (Phase D2).
+preprocess = [
+    "torch>=2.5",
+    "torchvision>=0.20",
+]
+train = [
+    "torch>=2.5",
+    "torchvision>=0.20",
+    "transformers>=4.46",
+    "albumentations>=1.4",
+    "imagehash>=4.3",
+    "grad-cam>=1.5",
+    "torchstain>=1.4",
+    "matplotlib>=3.9",
+]
+
+[project.scripts]
+oscc-ml = "oscc_ml.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "types-PyYAML>=6.0",
+]
+
+[tool.uv]
+# Every locked package must have wheels for the platforms we actually run on: Linux x86-64
+# (CI, lab GPU, Colab, Kaggle) and Windows x86-64 (team laptops). Without this a brand-new
+# release that has not yet published Linux wheels can be locked and break CI (Nov 2026:
+# opencv-python-headless 5.1.0.95).
+required-environments = [
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "sys_platform == 'win32' and platform_machine == 'AMD64'",
+]
+# One OpenCV version on every platform (pulled in by albumentations and grad-cam). Lift this when
+# a 5.1.x release publishes Linux wheels; Dependabot will propose it.
+constraint-dependencies = ["opencv-python-headless<5.1"]
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/oscc_ml"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "S", "SIM", "RUF", "PT", "NPY"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S311"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+plugins = ["pydantic.mypy"]
+packages = ["oscc_ml"]
+mypy_path = "src"
+
+[[tool.mypy.overrides]]
+module = ["torchvision.*", "sklearn.*", "pandas.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = ["slow: runs a CPU smoke training (about a minute each)"]

@@ -22,7 +22,7 @@
 | 503 | `SERVICE_UNAVAILABLE` | A dependency is down (for example `/readyz`) |
 | 500 | `INTERNAL_ERROR` | Unhandled error; internals are never sent to the client and are logged with the request ID |
 
-**Added in D0 beyond the approved four.** `BAD_REQUEST`, `METHOD_NOT_ALLOWED` and `SERVICE_UNAVAILABLE` were not in the planning list. The approved list covered only `VALIDATION_ERROR`, `UNAUTHENTICATED`, `RATE_LIMITED` and `INTERNAL_ERROR`. The three extras were needed so that every status code maps to an accurate code. They are flagged in the D0 phase report for confirmation.
+**Added in D0 beyond the four codes approved in planning.** The planning list covered only `VALIDATION_ERROR`, `UNAUTHENTICATED`, `RATE_LIMITED` and `INTERNAL_ERROR`. Three more were added so that every status code maps to an accurate code: `BAD_REQUEST`, `METHOD_NOT_ALLOWED` and `SERVICE_UNAVAILABLE`. **The team approved all three after the D0 review (Nov 2026).** The full table is also listed under "SDS v1.1 errata" in `docs/traceability.md`.
 
 ## G-b: Liveness and readiness endpoints
 
