@@ -53,6 +53,7 @@ class PipelineOptions:
     dataset_version: str = "oscc-unified-v1"
     device: str = "auto"
     sweep_epochs: int = 5
+    max_tissue_threshold: int | None = None
     # Test-only overrides (make runs non-reportable; never used at the university).
     epochs: int | None = None
     random_init: bool = False
@@ -131,8 +132,9 @@ def _run_step(results: list[StepResult], name: str, action: Callable[[], tuple[s
     except Exception as exc:
         seconds = time.perf_counter() - started
         logger.error("step %s FAILED: %s\n%s", name, exc, traceback.format_exc())
-        first_line = str(exc).splitlines()[0] if str(exc) else ""
-        results.append(StepResult(name, "failed", seconds, f"{type(exc).__name__}: {first_line}"))
+        lines = [ln.strip() for ln in str(exc).splitlines() if ln.strip()]
+        reason = " | ".join(lines[:2])[:200]
+        results.append(StepResult(name, "failed", seconds, f"{type(exc).__name__}: {reason}"))
         return False
     seconds = time.perf_counter() - started
     results.append(StepResult(name, status, seconds, detail))
@@ -141,7 +143,7 @@ def _run_step(results: list[StepResult], name: str, action: Callable[[], tuple[s
 
 
 def run_pipeline(options: PipelineOptions) -> list[StepResult]:
-    from oscc_ml.data.prepare import PrepareSettings, prepare
+    from oscc_ml.data.prepare import PrepareSettings, prepare, protocol_tiling
     from oscc_ml.data.processed import read_dataset_info
     from oscc_ml.eval.evaluate import evaluate_all
     from oscc_ml.report import build_report
@@ -165,7 +167,9 @@ def run_pipeline(options: PipelineOptions) -> list[StepResult]:
                 info_path = options.data_root / "dataset.json"
                 before = read_json(info_path).get("created_at") if info_path.is_file() else None
                 settings = PrepareSettings(
-                    dataset_version=options.dataset_version, **options.prepare_kwargs
+                    dataset_version=options.dataset_version,
+                    tiling=protocol_tiling(options.max_tissue_threshold),
+                    **options.prepare_kwargs,
                 )
                 prepare(options.raw, options.data_root, settings)
                 info = read_dataset_info(options.data_root)

@@ -9,6 +9,10 @@ Tiling rule (decision O5, accepted):
   dropped); keep patches whose tissue fraction is >= ``min_tissue_fraction`` (0.5), where tissue
   = saturation above the image's Otsu threshold; if more than ``max_patches_per_image`` (64)
   remain, keep that many evenly spaced (in raster order).
+* Optional (``max_tissue_threshold``, off by default = O5 as agreed): cap the Otsu threshold.
+  On frames that are almost all tissue, Otsu splits pale eosin from dense haematoxylin instead of
+  tissue from glass; the cap keeps pale tissue. Recorded in dataset.json; inference must use the
+  same value.
 * If no patch reaches the tissue threshold, keep the single patch with the most tissue
   (``mode = "grid_fallback"``), so no image is silently lost; the manifest records it.
 """
@@ -88,6 +92,7 @@ class TilingParams:
     resize_if_both_sides_below: int = 448
     min_tissue_fraction: float = 0.5
     max_patches_per_image: int = 64
+    max_tissue_threshold: int | None = None  # None: plain Otsu (O5)
 
 
 @dataclass
@@ -108,7 +113,10 @@ def tile_image(rgb: NDArray[np.uint8], params: TilingParams | None = None) -> Ti
         return TilingResult([load_rgb(resized)], [(0, 0)], [1.0], "resize", 1)
 
     sat = saturation(rgb)
-    mask = sat > otsu_threshold(sat)
+    threshold = otsu_threshold(sat)
+    if params.max_tissue_threshold is not None:
+        threshold = min(threshold, params.max_tissue_threshold)
+    mask = sat > threshold
     rows, cols = height // size, width // size
     coords: list[tuple[int, int]] = []
     fractions: list[float] = []

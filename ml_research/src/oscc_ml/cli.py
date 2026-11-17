@@ -373,32 +373,28 @@ def prepare_command(
     group_regex: Annotated[
         str | None, typer.Option(help="Regex extracting a patient ID from the path (group 1)")
     ] = None,
+    max_tissue_threshold: Annotated[
+        int | None,
+        typer.Option(help="Cap the Otsu saturation threshold (0-255); default: plain Otsu (O5)"),
+    ] = None,
     seed: Annotated[int, typer.Option()] = 42,
     force: Annotated[
         bool, typer.Option(help="Rebuild even if --out holds another dataset")
     ] = False,
 ) -> None:
     """Manifest (SHA-256 + pHash), dedup, grouped 70:15:15 split, leakage test, 224 px patches."""
-    from oscc_ml.config import load_protocol
-    from oscc_ml.data.prepare import PrepareError, PrepareSettings, prepare
+    from oscc_ml.data.prepare import PrepareError, PrepareSettings, prepare, protocol_tiling
     from oscc_ml.data.sources import UnlabelledPathError
     from oscc_ml.data.split import LeakageError, SplitError
-    from oscc_ml.preprocess import TilingParams
 
     _setup_logging()
-    tiling_cfg = load_protocol().data.tiling
     settings = PrepareSettings(
         dataset_version=dataset_version,
         seed=seed,
         duplicate_threshold=duplicate_threshold,
         group_threshold=group_threshold,
         group_regex=group_regex,
-        tiling=TilingParams(
-            patch_size=tiling_cfg.patch_size,
-            resize_if_both_sides_below=tiling_cfg.resize_if_both_sides_below,
-            min_tissue_fraction=tiling_cfg.min_tissue_fraction,
-            max_patches_per_image=tiling_cfg.max_patches_per_image,
-        ),
+        tiling=protocol_tiling(max_tissue_threshold),
     )
     try:
         prepare(raw, out, settings, force=force)
@@ -431,23 +427,24 @@ def check_leakage_command(data_root: DataRoot = DEFAULT_DATA_ROOT) -> None:
 
 @app.command("make-sample")
 def make_sample_command(
-    zip_path: Annotated[Path, typer.Option("--zip", help="The raw Kaggle zip")],
-    per_class: Annotated[int, typer.Option(help="Images per class")] = 30,
+    raw: Annotated[Path, typer.Option(help="The raw Kaggle zip or extracted folder (read only)")],
+    per_class: Annotated[int, typer.Option(help="Original images per class")] = 30,
+    augmented_per_class: Annotated[
+        int, typer.Option(help="Publisher-augmented files per class (to test their exclusion)")
+    ] = 5,
     out: Annotated[Path, typer.Option(help="Output folder")] = SAMPLE_DIR,
     seed: Annotated[int, typer.Option()] = 42,
 ) -> None:
-    """Copy N images per class out of the zip (reads only those members) for local work."""
+    """Copy N images per class out of the zip or folder (reads only those files)."""
     from oscc_ml.data.sample import SampleError, make_sample
 
-    if not zip_path.is_file():
-        raise _fail(f"{zip_path} not found")
     try:
-        record = make_sample(zip_path, out, per_class, seed)
+        record = make_sample(raw, out, per_class, seed, augmented_per_class)
     except SampleError as exc:
         raise _fail(str(exc)) from exc
     typer.echo(
         f"sample: {len(record['files'])} images in {out} "
-        f"(archive holds {record['n_images_in_archive']})"
+        f"(source holds {record['n_images_in_source']}: {record['n_by_pool_in_source']})"
     )
 
 
@@ -480,6 +477,9 @@ def uni_run_command(
     dataset_version: Annotated[str, typer.Option()] = "oscc-unified-v1",
     device: Device = "auto",
     sweep_epochs: Annotated[int, typer.Option(help="Epochs per LR-sweep trial")] = 5,
+    max_tissue_threshold: Annotated[
+        int | None, typer.Option(help="Cap the Otsu saturation threshold (see prepare)")
+    ] = None,
     epochs: Annotated[int | None, typer.Option(help="TEST ONLY: shorten training")] = None,
     random_init: RandomInit = False,
     bootstrap: Annotated[int, typer.Option(help="Bootstrap resamples")] = 2000,
@@ -498,6 +498,7 @@ def uni_run_command(
         dataset_version=dataset_version,
         device=device,
         sweep_epochs=sweep_epochs,
+        max_tissue_threshold=max_tissue_threshold,
         epochs=epochs,
         random_init=random_init,
         bootstrap=bootstrap,

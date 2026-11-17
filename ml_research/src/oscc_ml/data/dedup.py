@@ -69,3 +69,22 @@ def clusters(distances: NDArray[np.uint8], threshold: int) -> NDArray[np.int64]:
     roots = np.array([find(i) for i in range(n)])
     _, labels = np.unique(roots, return_inverse=True)
     return labels.astype(np.int64)
+
+
+def nearest(
+    queries: NDArray[np.uint64], references: NDArray[np.uint64], chunk: int = 512
+) -> tuple[NDArray[np.int64], NDArray[np.int64]]:
+    """For each query (8 hashes), the transform-invariant distance to the closest reference and
+    that reference's row index."""
+    if len(references) == 0:
+        return np.full(len(queries), 64, dtype=np.int64), np.zeros(len(queries), dtype=np.int64)
+    best_d = np.empty(len(queries), dtype=np.int64)
+    best_i = np.empty(len(queries), dtype=np.int64)
+    plain = queries[:, 0]
+    for start in range(0, len(queries), chunk):
+        stop = min(len(queries), start + chunk)
+        xor = plain[start:stop, None, None] ^ references[None, :, :]
+        dist = np.bitwise_count(xor).min(axis=2)
+        best_i[start:stop] = dist.argmin(axis=1)
+        best_d[start:stop] = dist.min(axis=1)
+    return best_d, best_i

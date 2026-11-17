@@ -74,3 +74,15 @@ def test_long_thin_images_fall_back_to_resize(shape: tuple[int, int]) -> None:
     result = tile_image(_image(*shape, (0, 0, *shape)))
     assert result.mode == "resize"
     assert len(result.patches) == 1
+
+
+def test_threshold_cap_keeps_pale_tissue_on_full_frames() -> None:
+    """A frame with no glass: pale (eosin-like) left half, dense (haematoxylin-like) right half.
+    Plain Otsu splits the two stains; the optional cap counts both as tissue."""
+    image = np.zeros((448, 448, 3), dtype=np.uint8)
+    image[:, :224] = [225, 185, 205]  # pale pink, saturation ~45
+    image[:, 224:] = [120, 60, 150]  # dense purple, saturation ~153
+    plain = tile_image(image)
+    capped = tile_image(image, TilingParams(max_tissue_threshold=40))
+    assert sorted(c for _, c in plain.coords) == [224, 224]  # pale half lost
+    assert len(capped.patches) == 4

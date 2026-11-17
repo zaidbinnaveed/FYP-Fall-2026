@@ -37,6 +37,12 @@ def grouped_split(labels: list[int], groups: list[str], seed: int) -> list[str]:
         )
     if len(set(labels)) < 2:
         raise SplitError("both classes are needed for a stratified split")
+    smallest = min(labels.count(0), labels.count(1))
+    if smallest < N_FOLDS:
+        raise SplitError(
+            f"the smaller class has only {smallest} images; a stratified 70:15:15 split with "
+            f"{N_FOLDS} folds needs at least {N_FOLDS} per class"
+        )
     folds = np.full(len(labels), -1)
     splitter = StratifiedGroupKFold(n_splits=N_FOLDS, shuffle=True, random_state=seed)
     dummy = np.zeros(len(labels))

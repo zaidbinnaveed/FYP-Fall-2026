@@ -43,15 +43,45 @@ def prepared(tmp_path_factory: pytest.TempPathFactory, test_zip: Path) -> Path:
 
 def test_augmented_copies_are_removed(prepared: Path) -> None:
     info = read_dataset_info(prepared)
-    assert info["n_source_images"] == 2 * PER_CLASS + TRAIN_ORIGINALS * AUGMENTED
-    assert info["n_duplicates_removed"] == TRAIN_ORIGINALS * AUGMENTED
+    # 2 x PER_CLASS originals + 1 cross-split duplicate per class + the publisher's aug_ files
+    assert info["n_source_images"] == 2 * PER_CLASS + 2 + TRAIN_ORIGINALS * AUGMENTED
+    assert info["n_publisher_augmented_excluded"] == TRAIN_ORIGINALS * AUGMENTED
+    assert info["n_duplicates_removed"] == 2  # the re-saved originals, found by pHash/SHA-256
     assert info["n_kept_images"] == 2 * PER_CLASS
     manifest = pd.read_csv(prepared / "manifest.csv")
-    removed = manifest[manifest["is_augmented_copy"]]
-    assert removed["original_path"].str.contains("/aug_").all()
-    assert (removed["split"] == "excluded").all()
+    publisher = manifest[manifest["publisher_augmented"]]
+    assert publisher["original_path"].str.contains("/aug_").all()
+    assert (publisher["split"] == "excluded").all()
+    # whole-image resizes are close to their original; random crops usually are not
+    distances = publisher["nearest_original_distance"].astype(float)
+    assert (distances <= 6).sum() >= TRAIN_ORIGINALS * AUGMENTED // 4
     kept = manifest[manifest["split"] != "excluded"]
     assert not kept["original_path"].str.contains("/aug_").any()
+
+
+def test_cross_split_duplicate_keeps_one_copy(prepared: Path) -> None:
+    manifest = pd.read_csv(prepared / "manifest.csv")
+    dups = manifest[manifest["is_augmented_copy"] & ~manifest["publisher_augmented"]]
+    assert len(dups) == 2
+    for _, row in dups.iterrows():
+        twin = manifest[manifest["image_id"] == row["duplicate_of"]]
+        assert len(twin) == 1
+        assert twin["split"].iloc[0] != "excluded"
+        # the representative rule prefers the copy from the publisher's val/test folders
+        assert twin["original_split"].iloc[0] == "test"
+
+
+def test_pphash_alone_catches_resized_copies_when_names_are_ignored(
+    test_zip: Path, tmp_path: Path
+) -> None:
+    out = prepare(
+        test_zip,
+        tmp_path / "no-names",
+        PrepareSettings(dataset_version="synthetic-prep", augmented_name_regex=None),
+    )
+    info = read_dataset_info(out)
+    assert info["n_publisher_augmented_excluded"] == 0
+    assert info["n_duplicates_removed"] >= 2 + TRAIN_ORIGINALS * AUGMENTED // 4
 
 
 def test_split_is_grouped_stratified_70_15_15(prepared: Path) -> None:
@@ -171,14 +201,49 @@ def test_leakage_test_fails_loudly_on_injected_leaks(prepared: Path) -> None:
 
 def test_make_sample_reads_only_the_chosen_members(test_zip: Path, tmp_path: Path) -> None:
     out = tmp_path / "sample"
-    record = make_sample(test_zip, out, per_class=10)
-    assert len(record["files"]) == 20
-    images = [p for p in out.rglob("*.jpg")]
-    assert len(images) == 20
-    assert sum("/Normal/" in p.as_posix() for p in images) == 10
+    record = make_sample(test_zip, out, per_class=10, augmented_per_class=2)
+    assert len(record["files"]) == 24
+    images = list(out.rglob("*.jpg"))
+    assert len(images) == 24
+    originals = [p for p in images if not p.name.startswith("aug_")]
+    assert sum("/Normal/" in p.as_posix() for p in originals) == 10
+    assert sum(p.name.startswith("aug_") for p in images) == 4
     assert json.loads((out / "SAMPLE.json").read_text("utf-8"))["per_class"] == 10
-    again = make_sample(test_zip, tmp_path / "sample2", per_class=10)
+    again = make_sample(test_zip, out, per_class=10, augmented_per_class=2)  # replaces a sample
     assert [f["path"] for f in again["files"]] == [f["path"] for f in record["files"]]
+
+
+def test_make_sample_from_a_folder_matches_the_zip(test_zip: Path, tmp_path: Path) -> None:
+    folder = tmp_path / "raw"
+    with zipfile.ZipFile(test_zip) as archive:
+        archive.extractall(folder)
+    before = sorted((p.as_posix(), p.stat().st_size) for p in folder.rglob("*"))
+    from_zip = make_sample(test_zip, tmp_path / "a", per_class=22)
+    from_folder = make_sample(folder, tmp_path / "b", per_class=22)
+    assert [f["path"] for f in from_zip["files"]] == [f["path"] for f in from_folder["files"]]
+    assert from_folder["source_kind"] == "folder"
+    # the raw folder is only read
+    assert sorted((p.as_posix(), p.stat().st_size) for p in folder.rglob("*")) == before
+    sample = prepare(
+        tmp_path / "b", tmp_path / "prep", PrepareSettings(dataset_version="synthetic-s")
+    )
+    assert read_dataset_info(sample)["n_kept_images"] >= 2 * 22 - 2  # minus sampled re-saves
+
+
+def test_make_sample_never_touches_raw_or_unknown_folders(test_zip: Path, tmp_path: Path) -> None:
+    folder = tmp_path / "raw"
+    with zipfile.ZipFile(test_zip) as archive:
+        archive.extractall(folder)
+    with pytest.raises(SampleError, match="overlaps the raw data"):
+        make_sample(folder, folder / "sample", per_class=2)
+    with pytest.raises(SampleError, match="overlaps the raw data"):
+        make_sample(folder / "Oral Cancer Dataset", folder, per_class=2)
+    precious = tmp_path / "precious"
+    precious.mkdir()
+    (precious / "notes.txt").write_text("keep me")
+    with pytest.raises(SampleError, match="refusing to replace"):
+        make_sample(test_zip, precious, per_class=2)
+    assert (precious / "notes.txt").read_text() == "keep me"
 
 
 def test_make_sample_refuses_incomplete_downloads(tmp_path: Path) -> None:
@@ -190,3 +255,8 @@ def test_make_sample_refuses_incomplete_downloads(tmp_path: Path) -> None:
         app, ["make-sample", "--zip", str(partial), "--out", str(tmp_path / "s")]
     )
     assert result.exit_code == 2
+
+
+def test_manifest_image_ids_are_unique(prepared: Path) -> None:
+    manifest = pd.read_csv(prepared / "manifest.csv")
+    assert manifest["image_id"].is_unique
