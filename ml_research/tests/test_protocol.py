@@ -96,3 +96,15 @@ def test_smoke_overrides_follow_adr_g_e() -> None:
     assert cfg.run.deterministic == "strict"
     assert cfg.run.seed == 42
     assert cfg.protocol.smoke.num_images == 32
+
+
+def test_report_and_import_work_without_torch() -> None:
+    """At home only a light install is needed to rebuild the report (no torch download)."""
+    import subprocess
+    import sys
+
+    code = (
+        "import sys, oscc_ml.cli, oscc_ml.report, oscc_ml.results; "
+        "sys.exit(1 if 'torch' in sys.modules else 0)"
+    )
+    assert subprocess.run([sys.executable, "-c", code], check=False).returncode == 0  # noqa: S603
