@@ -2,8 +2,9 @@
 
 Pipeline (each step resumable; see docs and scripts/uni_*):
     sweep -> train-all -> evaluate -> report -> pack-results  (import-results at home)
-Utilities: train (single model), check (machine readiness), make-synthetic-data, env.
-Data preparation (prepare, make-sample) is Phase R1.
+Data: prepare (raw zip/folder -> manifest, dedup, split, patches), make-sample, check-leakage.
+University: uni-run (prepare -> sweep -> train-all -> evaluate -> report -> pack-results).
+Utilities: train (single model), check (machine readiness), make-test-zip, make-synthetic-data, env.
 
 Exit codes: 0 success, 1 a step failed, 2 refused or invalid input.
 """
@@ -20,7 +21,13 @@ from typing import Annotated
 import typer
 
 from oscc_ml.config import model_config_names
-from oscc_ml.paths import DEFAULT_DATA_ROOT, REPORT_DIR_NAME, RUNS_DIR, configure_caches
+from oscc_ml.paths import (
+    DEFAULT_DATA_ROOT,
+    REPORT_DIR_NAME,
+    RUNS_DIR,
+    SAMPLE_DIR,
+    configure_caches,
+)
 
 configure_caches()
 app = typer.Typer(no_args_is_help=True, add_completion=False, help=__doc__)
@@ -50,7 +57,7 @@ def _setup_logging() -> None:
 
 
 def _models(value: str | None) -> tuple[str, ...]:
-    from oscc_ml.models.factory import ALL_ARCHITECTURES
+    from oscc_ml.catalog import ALL_ARCHITECTURES
 
     if not value:
         return ALL_ARCHITECTURES
@@ -352,6 +359,158 @@ def make_synthetic_command(
         dataset_version="synthetic-pipeline",
     )
     typer.echo(f"synthetic dataset written to {out}")
+
+
+@app.command("prepare")
+def prepare_command(
+    raw: Annotated[Path, typer.Option(help="Raw dataset: the Kaggle zip or an extracted folder")],
+    out: Annotated[Path, typer.Option(help="Output folder")] = DEFAULT_DATA_ROOT,
+    dataset_version: Annotated[
+        str, typer.Option(help="Tag recorded in every run")
+    ] = "oscc-unified-v1",
+    duplicate_threshold: Annotated[int, typer.Option(help="pHash distance for copies")] = 6,
+    group_threshold: Annotated[int, typer.Option(help="pHash distance for grouping")] = 10,
+    group_regex: Annotated[
+        str | None, typer.Option(help="Regex extracting a patient ID from the path (group 1)")
+    ] = None,
+    seed: Annotated[int, typer.Option()] = 42,
+    force: Annotated[
+        bool, typer.Option(help="Rebuild even if --out holds another dataset")
+    ] = False,
+) -> None:
+    """Manifest (SHA-256 + pHash), dedup, grouped 70:15:15 split, leakage test, 224 px patches."""
+    from oscc_ml.config import load_protocol
+    from oscc_ml.data.prepare import PrepareError, PrepareSettings, prepare
+    from oscc_ml.data.sources import UnlabelledPathError
+    from oscc_ml.data.split import LeakageError, SplitError
+    from oscc_ml.preprocess import TilingParams
+
+    _setup_logging()
+    tiling_cfg = load_protocol().data.tiling
+    settings = PrepareSettings(
+        dataset_version=dataset_version,
+        seed=seed,
+        duplicate_threshold=duplicate_threshold,
+        group_threshold=group_threshold,
+        group_regex=group_regex,
+        tiling=TilingParams(
+            patch_size=tiling_cfg.patch_size,
+            resize_if_both_sides_below=tiling_cfg.resize_if_both_sides_below,
+            min_tissue_fraction=tiling_cfg.min_tissue_fraction,
+            max_patches_per_image=tiling_cfg.max_patches_per_image,
+        ),
+    )
+    try:
+        prepare(raw, out, settings, force=force)
+    except (FileNotFoundError, ValueError, PrepareError, UnlabelledPathError, SplitError) as exc:
+        raise _fail(str(exc), code=1) from exc
+    except LeakageError as exc:
+        raise _fail(str(exc), code=1) from exc
+    typer.echo(f"prepared dataset: {out}")
+
+
+@app.command("check-leakage")
+def check_leakage_command(data_root: DataRoot = DEFAULT_DATA_ROOT) -> None:
+    """Re-run the leakage test on a prepared dataset (fails loudly on any leak)."""
+    import pandas as pd
+
+    from oscc_ml.data.split import LeakageError, check_leakage
+
+    manifest_path = data_root / "manifest.csv"
+    if not manifest_path.is_file():
+        raise _fail(f"{manifest_path} not found")
+    manifest = pd.read_csv(manifest_path, dtype=str)
+    kept = manifest[manifest["split"] != "excluded"].copy()
+    kept["label"] = kept["label"].astype(int)
+    try:
+        check_leakage(kept)
+    except LeakageError as exc:
+        raise _fail(str(exc), code=1) from exc
+    typer.echo(f"leakage test passed for {len(kept)} images in {data_root}")
+
+
+@app.command("make-sample")
+def make_sample_command(
+    zip_path: Annotated[Path, typer.Option("--zip", help="The raw Kaggle zip")],
+    per_class: Annotated[int, typer.Option(help="Images per class")] = 30,
+    out: Annotated[Path, typer.Option(help="Output folder")] = SAMPLE_DIR,
+    seed: Annotated[int, typer.Option()] = 42,
+) -> None:
+    """Copy N images per class out of the zip (reads only those members) for local work."""
+    from oscc_ml.data.sample import SampleError, make_sample
+
+    if not zip_path.is_file():
+        raise _fail(f"{zip_path} not found")
+    try:
+        record = make_sample(zip_path, out, per_class, seed)
+    except SampleError as exc:
+        raise _fail(str(exc)) from exc
+    typer.echo(
+        f"sample: {len(record['files'])} images in {out} "
+        f"(archive holds {record['n_images_in_archive']})"
+    )
+
+
+@app.command("make-test-zip")
+def make_test_zip_command(
+    out: Annotated[Path, typer.Option(help="Zip file to write")],
+    per_class: Annotated[int, typer.Option(help="Original images per class")] = 30,
+    augmented: Annotated[int, typer.Option(help="Augmented copies per train image")] = 2,
+    size: Annotated[str, typer.Option(help="Image size WIDTHxHEIGHT")] = "900x700",
+    seed: Annotated[int, typer.Option()] = 42,
+) -> None:
+    """Synthetic archive laid out like the Kaggle release (CI and dry runs only)."""
+    from oscc_ml.data.testzip import make_test_zip
+
+    try:
+        width, height = (int(v) for v in size.lower().split("x"))
+    except ValueError as exc:
+        raise _fail("--size must look like 900x700") from exc
+    make_test_zip(out, per_class, augmented, seed, size=(width, height))
+    typer.echo(
+        f"test zip written: {out} (synthetic; prepare it with --dataset-version synthetic-...)"
+    )
+
+
+@app.command("uni-run")
+def uni_run_command(
+    raw: Annotated[Path, typer.Option(help="The raw Kaggle zip (or extracted folder)")],
+    data_root: DataRoot = DEFAULT_DATA_ROOT,
+    runs_dir: RunsDir = RUNS_DIR,
+    dataset_version: Annotated[str, typer.Option()] = "oscc-unified-v1",
+    device: Device = "auto",
+    sweep_epochs: Annotated[int, typer.Option(help="Epochs per LR-sweep trial")] = 5,
+    epochs: Annotated[int | None, typer.Option(help="TEST ONLY: shorten training")] = None,
+    random_init: RandomInit = False,
+    bootstrap: Annotated[int, typer.Option(help="Bootstrap resamples")] = 2000,
+    latency_warmup: Annotated[int, typer.Option()] = 50,
+    latency_runs: Annotated[int, typer.Option()] = 200,
+    config_dir: ConfigDir = None,
+) -> None:
+    """prepare -> sweep -> train-all -> evaluate -> report -> pack-results, resumable."""
+    from oscc_ml.pipeline import AlreadyRunningError, PipelineOptions, run_pipeline
+
+    _setup_logging()
+    options = PipelineOptions(
+        raw=raw,
+        data_root=data_root,
+        runs_dir=runs_dir,
+        dataset_version=dataset_version,
+        device=device,
+        sweep_epochs=sweep_epochs,
+        epochs=epochs,
+        random_init=random_init,
+        bootstrap=bootstrap,
+        latency_warmup=latency_warmup,
+        latency_runs=latency_runs,
+        config_dir=config_dir,
+    )
+    try:
+        results = run_pipeline(options)
+    except AlreadyRunningError as exc:
+        raise _fail(str(exc)) from exc
+    if any(r.status in {"failed", "not run"} for r in results):
+        raise typer.Exit(code=1)
 
 
 @app.command("env")
