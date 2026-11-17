@@ -22,7 +22,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from oscc_ml.paths import EXPORT_DIR_NAME, REPORT_DIR_NAME, SWEEP_DIR_NAME
-from oscc_ml.runinfo import git_state
+from oscc_ml.utils.gitinfo import git_state
 from oscc_ml.utils.io import iso, read_json, utc_now
 
 MANIFEST = "MANIFEST.json"

@@ -1,0 +1,71 @@
+"""Perceptual-hash deduplication and grouping (plan section 3 and R1 steps 3-4).
+
+Each image gets eight 64-bit pHashes: one per flip/90-degree rotation (the dihedral group). The
+distance between two images is the smallest Hamming distance between image A's plain hash and
+any of image B's eight hashes, so flipped or rotated augmented copies are recognised exactly.
+
+Two thresholds (both recorded in dataset.json; tune at gate G1 by inspecting clusters):
+* ``duplicate_threshold`` (default 6, plan R1): images this close are copies of one another
+  (augmented copies, re-saves). One representative per duplicate cluster is kept.
+* ``group_threshold`` (default 10): kept images this close are probably neighbouring fields of the
+  same slide/patient, so they are grouped and always land in the same split.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+from numpy.typing import NDArray
+from PIL import Image
+
+N_TRANSFORMS = 8
+
+
+def dihedral_phashes(image: Image.Image) -> NDArray[np.uint64]:
+    """pHash of each of the 8 flips/rotations, as uint64 (index 0 = the image as is)."""
+    import imagehash
+
+    grey = image.convert("L")
+    grey.thumbnail((512, 512))  # pHash works on 32x32; shrinking first only saves time
+    variants = []
+    for flip in (False, True):
+        base = grey.transpose(Image.Transpose.FLIP_LEFT_RIGHT) if flip else grey
+        for k in range(4):
+            rotated = base.rotate(90 * k, expand=True) if k else base
+            bits = imagehash.phash(rotated).hash.flatten()
+            variants.append(int("".join("1" if b else "0" for b in bits), 2))
+    return np.asarray(variants, dtype=np.uint64)
+
+
+def min_distances(hashes: NDArray[np.uint64], chunk: int = 512) -> NDArray[np.uint8]:
+    """Pairwise transform-invariant Hamming distance, shape (n, n), uint8. Memory: n*n bytes."""
+    n = hashes.shape[0]
+    plain = hashes[:, 0]
+    out = np.full((n, n), 64, dtype=np.uint8)
+    for start in range(0, n, chunk):
+        stop = min(n, start + chunk)
+        xor = plain[start:stop, None, None] ^ hashes[None, :, :]  # (chunk, n, 8)
+        dist = np.bitwise_count(xor).min(axis=2).astype(np.uint8)
+        out[start:stop] = dist
+    return np.minimum(out, out.T)
+
+
+def clusters(distances: NDArray[np.uint8], threshold: int) -> NDArray[np.int64]:
+    """Connected components of the graph 'distance <= threshold' (union-find). Labels 0..k-1,
+    numbered by their first member so the result is deterministic."""
+    n = distances.shape[0]
+    parent = np.arange(n)
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = int(parent[i])
+        return i
+
+    rows, cols = np.nonzero(np.triu(distances <= threshold, k=1))
+    for a, b in zip(rows.tolist(), cols.tolist(), strict=True):
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[max(ra, rb)] = min(ra, rb)
+    roots = np.array([find(i) for i in range(n)])
+    _, labels = np.unique(roots, return_inverse=True)
+    return labels.astype(np.int64)

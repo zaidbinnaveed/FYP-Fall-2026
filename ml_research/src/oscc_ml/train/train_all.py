@@ -11,8 +11,8 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from oscc_ml.catalog import ALL_ARCHITECTURES
 from oscc_ml.data.processed import read_dataset_info
-from oscc_ml.models.factory import ALL_ARCHITECTURES
 from oscc_ml.train.runner import run_training
 from oscc_ml.train.sweep import chosen_lr_path
 from oscc_ml.utils.io import read_json
