@@ -113,18 +113,22 @@ infrastructure/  docker-compose.dev.yml, docker-compose.prod.yml, nginx/, .env.e
 Fill these in as they are created in Phase D0/R0, and keep them accurate.
 
 ```bash
-docker compose -f infrastructure/docker-compose.dev.yml up --build   # full dev stack
-cd api && pytest                                                     # API unit + integration tests
-cd api && alembic upgrade head                                       # migrations
-cd api && python -m app.cli create-admin                             # first administrator
-cd ml_research && pip install -e ".[dev]"                            # research package
-oscc-ml train --model resnet50 --smoke                               # CPU smoke training
-oscc-ml report                                                       # regenerate results from runs/
-cd frontend && npm install && npm run dev                            # SPA dev server
-cd frontend && npm test && npx playwright test                       # unit + e2e
+cp infrastructure/.env.example infrastructure/.env                         # once
+docker compose -f infrastructure/docker-compose.dev.yml up --build --wait   # full dev stack, all healthy
+bash infrastructure/scripts/compose_check.sh                               # assert every service healthy
+cd api && uv sync && uv run pytest                                         # API unit tests (+ storage integration if STORAGE_INTEGRATION_ENDPOINT_URL is set)
+cd api && uv run ruff check . && uv run mypy && uv run lint-imports        # API lint, types, architecture contracts
+cd api && uv run alembic upgrade head                                      # migrations (first revision in D1)
+cd api && uv run python -m app.cli create-admin                            # first administrator (Phase D1)
+cd inference && uv sync && uv run pytest                                   # inference service tests
+cd ml_research && uv venv && bash scripts/install_pinned.sh --torch cpu --extra train --dev   # research package, CPU torch
+#   lab GPU: --torch locked   |   Colab/Kaggle: --torch platform (see notebooks/oscc_ml_runner.ipynb)
+oscc-ml train --model resnet50 --smoke                                     # CPU smoke training (synthetic, not reportable)
+oscc-ml env                                                                # environment info recorded by every run
+oscc-ml report                                                             # regenerate results from runs/ (Phase R2/R3)
+cd frontend && npm ci && npm run dev                                       # SPA dev server
+cd frontend && npm test && npx playwright test                             # unit + e2e (Playwright from D6)
 ```
-
----
 
 ## 8. Definition of done (every phase)
 
