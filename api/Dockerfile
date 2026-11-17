@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Image for the api, the worker and the admin CLI (same code, different command).
-FROM ghcr.io/astral-sh/uv:0.13.7 AS uv
+FROM ghcr.io/astral-sh/uv:0.13.9 AS uv
 
 FROM python:3.11.18-slim AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 \
