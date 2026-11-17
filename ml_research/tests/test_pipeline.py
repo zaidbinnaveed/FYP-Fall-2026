@@ -237,7 +237,7 @@ def test_import_refuses_corrupt_and_conflicting_files(tmp_path: Path) -> None:
         {"files": [{"path": "run/a.txt", "size": 5, "sha256": digest}]},
     )
     target = tmp_path / "runs" / "run" / "a.txt"
-    target.parent.mkdir(parents=True)
+    target.parent.mkdir(parents=True, exist_ok=True)  # the refused import may leave the folder
     target.write_bytes(b"different")
     with pytest.raises(ImportRefusedError, match="overwrite"):
         import_results(good, tmp_path / "runs")

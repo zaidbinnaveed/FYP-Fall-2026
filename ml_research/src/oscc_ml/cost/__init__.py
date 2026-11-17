@@ -27,7 +27,7 @@ def count_gflops(model: nn.Module) -> float:
     x = torch.zeros(INPUT_SHAPE)
     with torch.inference_mode(), FlopCounterMode(display=False) as counter:
         model(x)
-    return counter.get_total_flops() / 1e9
+    return float(counter.get_total_flops()) / 1e9
 
 
 def measure_latency(

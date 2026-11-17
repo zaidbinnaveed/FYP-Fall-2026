@@ -99,10 +99,12 @@ def run_sweep(
         raise SweepIncompleteError("sweep incomplete:\n  " + "\n  ".join(failures))
 
     chosen, means = select_lr(table)
-    per_model_best = {
-        model: max(protocol.optimizer.lr_grid, key=lambda lr, m=model: (table[lr][m], -lr))
-        for model in models
-    }
+
+    def best_lr(model: str) -> float:
+        # highest validation AUC for this model; ties -> lower LR
+        return max(protocol.optimizer.lr_grid, key=lambda lr: (table[lr][model], -lr))
+
+    per_model_best = {model: best_lr(model) for model in models}
     protocol_sweep = pretrained and not is_synthetic(dataset_version)
     result: dict[str, Any] = {
         "chosen_lr": chosen,

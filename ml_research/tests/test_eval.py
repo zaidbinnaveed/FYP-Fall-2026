@@ -17,10 +17,13 @@ def test_threshold_reaches_target_recall_with_best_f1() -> None:
     labels = [1, 1, 1, 1, 0, 0, 0, 0]
     probs = [0.95, 0.9, 0.6, 0.35, 0.5, 0.3, 0.2, 0.1]
     tau = calibrate_threshold(labels, probs, target_recall=0.75)
-    # Thresholds reaching recall >= 0.75: 0.6 (P=1.0, R=0.75, F1=0.857) beats 0.5, 0.35, ...
-    assert tau["threshold"] == pytest.approx(0.6)
-    assert tau["validation_recall"] == pytest.approx(0.75)
-    assert tau["validation_f1"] == pytest.approx(6 / 7)
+    # Candidates reaching recall >= 0.75:
+    #   0.6  -> TP 3, FP 0: P 1.00, R 0.75, F1 0.857
+    #   0.5  -> TP 3, FP 1: P 0.75, R 0.75, F1 0.750
+    #   0.35 -> TP 4, FP 1: P 0.80, R 1.00, F1 0.889  <- best F1
+    assert tau["threshold"] == pytest.approx(0.35)
+    assert tau["validation_recall"] == pytest.approx(1.0)
+    assert tau["validation_f1"] == pytest.approx(8 / 9)
 
 
 def test_threshold_ties_go_to_the_lower_value() -> None:

@@ -85,7 +85,8 @@ class ViTBinary(nn.Module):
             )
         else:
             # ViTConfig defaults are exactly ViT-B/16 at 224 px (12 layers, 768 hidden, 12 heads).
-            config = ViTConfig(num_labels=1)
+            config = ViTConfig()
+            config.num_labels = 1
             config._attn_implementation = "eager"
             self.vit = ViTForImageClassification(config)
 

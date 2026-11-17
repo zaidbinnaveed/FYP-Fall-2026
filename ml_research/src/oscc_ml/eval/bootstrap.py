@@ -65,9 +65,9 @@ def grouped_bootstrap(
     for _ in range(n_resamples):
         chosen = rng.integers(0, len(members), len(members))
         idx = np.concatenate([members[i] for i in chosen])
-        values = point_metrics(y_all[idx], p_all[idx], threshold)
+        resampled = point_metrics(y_all[idx], p_all[idx], threshold)
         for metric in METRICS:
-            value = values[metric]
+            value = resampled[metric]
             if value is not None:
                 samples[metric].append(value)
 
