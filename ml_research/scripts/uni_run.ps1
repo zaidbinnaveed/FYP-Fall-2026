@@ -4,8 +4,10 @@ Full pipeline on the university GPU machine (Windows):
 Every step is skipped when already complete, so running this again after a crash or reboot
 continues where it stopped. Full log with tracebacks: ml_research\runs\uni_run.log
 
-  powershell -ExecutionPolicy Bypass -File ml_research\scripts\uni_run.ps1 -Raw D:\data\kaggle.zip
+  powershell -ExecutionPolicy Bypass -File ml_research\scripts\uni_run.ps1 -Raw ml_research\data\raw\kaggle_kebede
+  (-Raw takes the extracted folder or the zip)
   ... -Foreground          # run in this window instead of a separate minimized window
+  ... -MaxTissueThreshold 40   # cap the Otsu tissue threshold (only if the team decided so)
   ... -ExtraArgs "--sweep-epochs","5"   # further options for `oscc-ml uni-run`
 
 The background run opens its own minimized window. Do not close it and do not sign out of
@@ -14,6 +16,7 @@ Windows (lock the screen with Win+L instead); Windows is kept awake while it run
 param(
     [Parameter(Mandatory = $true)][string]$Raw,
     [switch]$Foreground,
+    [int]$MaxTissueThreshold = -1,
     [string[]]$ExtraArgs = @()
 )
 $ML = Split-Path -Parent $PSScriptRoot
@@ -25,13 +28,14 @@ if (-not (Test-Path $Oscc)) {
     exit 1
 }
 if (-not (Test-Path $Raw)) {
-    Write-Host "RUN FAILED: $Raw not found -- FIX: give the full path to the Kaggle zip" -ForegroundColor Red
+    Write-Host "RUN FAILED: $Raw not found -- FIX: give the full path to the Kaggle zip or extracted folder" -ForegroundColor Red
     exit 1
 }
 $RawFull = (Resolve-Path $Raw).Path
 New-Item -ItemType Directory -Force (Join-Path $ML "runs") | Out-Null
 $env:PYTHONIOENCODING = "utf-8"
 $RunArgs = @("uni-run", "--raw", $RawFull) + $ExtraArgs
+if ($MaxTissueThreshold -ge 0) { $RunArgs += @("--max-tissue-threshold", "$MaxTissueThreshold") }
 
 if ($Foreground) {
     & $Oscc @RunArgs

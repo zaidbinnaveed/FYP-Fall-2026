@@ -3,6 +3,7 @@
 This runbook takes you from an empty university machine to baseline results on your laptop at home.
 - **No Claude Code is needed at the university.** Every step is a script that is already in the repository.
 - **The scripts work on Windows and Linux.** Each step shows both versions.
+- **The dataset can come either way:** the Kaggle zip (`archive.zip`, 3.15 GB), or the folder extracted from it. Every command below accepts both.
 - **Never store a password, token or key on the university machine.**
   - The GitHub repository is public, so cloning needs no login.
   - The dataset arrives on a USB stick.
@@ -12,14 +13,31 @@ This runbook takes you from an empty university machine to baseline results on y
 
 ## 0. At home, before you go
 
-1. **Check that the Kaggle zip finished downloading.**
+**What the dataset looks like** (checked 18 Nov 2026 on the extracted folder; 5,192 files):
+
+```
+kaggle_kebede/
+  train/Normal  231 originals + 2,204 aug_<n>_<n>.jpg     train/OSCC  747 originals + 1,764 aug_*
+  val/Normal     28 originals                             val/OSCC     92 originals
+  test/Normal    31 originals                             test/OSCC    95 originals
+```
+
+- Originals are named like `Normal_100x_12.jpg` / `OSCC_400x_7.jpg`, mostly 2048×1536 (some portrait 1536×2048, one 1435×916).
+- There are 1,224 originals in total (290 Normal, 934 OSCC), matching the Rahman release.
+- The `aug_*` files are the publisher's 224×224 augmented copies. Their names carry no magnification and no link to the original. `prepare` excludes them by name, and the manifest lists each one.
+
+1. **If you bring the zip, check that it finished downloading.**
    - No `.crdownload` or `.partial` file is left.
    - The zip opens and lists its files without errors.
    - Optional: list it in Python without unpacking it: `python -c "import zipfile,sys; z=zipfile.ZipFile(sys.argv[1]); print(len(z.namelist()), 'entries'); print(z.testzip() or 'CRC OK')" <zip>`
 2. **Record its checksum.** You will compare it after copying.
    - Windows: `Get-FileHash -Algorithm SHA256 <zip>`
    - Linux: `sha256sum <zip>`
-3. **Copy the zip to a USB stick.** Use exFAT or NTFS: FAT32 cannot hold files over 4 GB.
+3. **Copy the zip, or the extracted `kaggle_kebede` folder, to a USB stick.** Use exFAT or NTFS: FAT32 cannot hold files over 4 GB.
+   - **If you copy the folder**, record its file count and total size for comparison:
+     - Windows: `Get-ChildItem -Recurse -File <folder> | Measure-Object -Property Length -Sum`
+     - Linux: `find <folder> -type f | wc -l; du -sb <folder>`
+     - Expect Count = 5192.
 4. **If the university machine has no `git`,** also download the repository as a ZIP from GitHub (Code → Download ZIP) onto the USB stick.
 
 ## 1. Get the code and the zip onto the university machine
@@ -44,7 +62,7 @@ cd FYP-Fall-2026
 
 **Without git:** unzip the repository ZIP from the USB stick into the same place. The folder will be called `FYP-Fall-2026-main`; use it in place of `FYP-Fall-2026` below.
 
-**Copy the dataset zip** into the gitignored raw-data folder, then check that it copied correctly.
+**Copy the dataset** into the gitignored raw-data folder, then check that it copied correctly. Use **either** the zip (first two blocks) **or** the extracted folder (last two blocks). The scripts only **read** `ml_research/data/raw/`; nothing there is ever moved, changed or deleted.
 
 ```powershell
 # Windows
@@ -59,6 +77,22 @@ mkdir -p ml_research/data/raw/kaggle_kebede
 cp /media/<you>/<usb>/<your zip>.zip ml_research/data/raw/kaggle_kebede/
 sha256sum ml_research/data/raw/kaggle_kebede/<your zip>.zip                       # must match home
 ```
+
+**Or the extracted folder.** `kaggle_kebede` holds `train/`, `val/` and `test/` directly.
+
+```powershell
+# Windows (robocopy is built in; /E copies sub-folders)
+robocopy E:\kaggle_kebede ml_research\data\raw\kaggle_kebede /E
+Get-ChildItem -Recurse -File ml_research\data\raw\kaggle_kebede | Measure-Object -Property Length -Sum   # Count must be 5192
+```
+
+```bash
+# Linux
+mkdir -p ml_research/data/raw && cp -r /media/<you>/<usb>/kaggle_kebede ml_research/data/raw/
+find ml_research/data/raw/kaggle_kebede -type f | wc -l          # must be 5192
+```
+
+In the commands below, `<dataset>` is **either** `ml_research/data/raw/kaggle_kebede` (the folder) **or** `ml_research/data/raw/kaggle_kebede/<your zip>.zip`.
 
 ## 2. One-time setup (no admin rights)
 
@@ -126,24 +160,31 @@ rm -rf ml_research/data/dryrun
 
 ## 5. The real run
 
-`uni_run` runs `prepare → sweep → train-all → evaluate → report → pack-results` in the background.
+`uni_run` runs `prepare → sweep → train-all → evaluate → report → pack-results` in the background. It takes **the extracted folder or the zip** (`<dataset>` from section 1). The examples use the folder.
+
+> **Decision needed before the run: the tissue threshold.**
+> - On the 60-image sample of the real data, the agreed O5 filter (plain Otsu on saturation) kept only 31% of grid tiles. 11 of the 60 images fell back to a single tile.
+> - With the threshold capped at 40, it kept 82% of tiles, with no fallbacks.
+> - If the team adopts the cap, add `-MaxTissueThreshold 40` (Windows) or `--max-tissue-threshold 40` (Linux) to the command below.
+> - Use the same value for every run; it is recorded in `dataset.json`.
 
 ```powershell
 # Windows: opens a separate minimized window
-powershell -ExecutionPolicy Bypass -File ml_research\scripts\uni_run.ps1 -Raw ml_research\data\raw\kaggle_kebede\<your zip>.zip
+powershell -ExecutionPolicy Bypass -File ml_research\scripts\uni_run.ps1 -Raw ml_research\data\raw\kaggle_kebede
 Get-Content -Wait ml_research\runs\uni_run.log      # watch progress (Ctrl+C stops watching, not the run)
 ```
 
 ```bash
 # Linux: uses tmux if installed, otherwise nohup (survives logging out)
-bash ml_research/scripts/uni_run.sh ml_research/data/raw/kaggle_kebede/<your zip>.zip
+bash ml_research/scripts/uni_run.sh ml_research/data/raw/kaggle_kebede
 tail -f ml_research/runs/uni_run.log               # watch progress (Ctrl+C stops watching, not the run)
 ```
 
 **What happens in each step:**
 - **prepare:**
-  - Reads the zip one image at a time and computes SHA-256 and pHash.
-  - Removes augmented copies and near-duplicates.
+  - Reads the zip or folder one image at a time and computes SHA-256 and pHash.
+  - Excludes the publisher's `aug_*` copies by name.
+  - Removes duplicate and near-duplicate originals (pHash, SHA-256).
   - Makes a grouped, stratified 70:15:15 split with seed 42 and runs the leakage test.
   - Writes 224×224 patches with the O5 rule.
   - Prints a count table per class, split and magnification. Keep it for the dataset audit.
@@ -194,7 +235,7 @@ Send these files. They contain no passwords or keys:
 | `CHECK FAILED: ... out of GPU memory at batch 32` | Close other GPU programs (see `nvidia-smi`). The protocol's batch size stays 32. |
 | `CHECK FAILED: cannot download/load pretrained weights` | The machine needs internet access to download.pytorch.org and huggingface.co. Set `HTTPS_PROXY` if the university uses a proxy, or copy `ml_research/.cache/` from a machine that already has the weights. |
 | `CHECK FAILED: only N GB free` | Free space, or clone onto a larger drive. |
-| `prepare` fails with `name no class folder` | The zip layout differs from what was expected. Send the log; nothing is guessed. |
+| `prepare` fails with `name no class folder` | The dataset layout differs from what was expected (class folders must be named Normal or OSCC). Send the log; nothing is guessed. |
 | `prepare` fails with `split proportions ...` | Similar images are being chained into very large groups. Rerun with a lower `--group-threshold` (via `oscc-ml prepare`) and send the log. |
 | `another uni-run is already running` | One run is still active (check the other window, or `tmux ls`). Wait for it to finish. |
 | PowerShell says scripts are disabled | Always start scripts with `powershell -ExecutionPolicy Bypass -File ...` as shown. This needs no admin rights. |

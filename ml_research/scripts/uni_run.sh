@@ -4,7 +4,7 @@
 # Every step is skipped when already complete, so running this again after a crash or reboot
 # continues where it stopped. Full log with tracebacks: ml_research/runs/uni_run.log
 #
-#   bash ml_research/scripts/uni_run.sh /path/to/kaggle.zip                # background (tmux or nohup)
+#   bash ml_research/scripts/uni_run.sh /path/to/kaggle_kebede   # zip or folder; background (tmux or nohup)
 #   bash ml_research/scripts/uni_run.sh /path/to/kaggle.zip --foreground   # in this terminal
 # Further options are passed to `oscc-ml uni-run` (see `oscc-ml uni-run --help`).
 set -euo pipefail
@@ -14,7 +14,7 @@ OSCC="$ML/.venv/bin/oscc-ml"
 LOG="$ML/runs/uni_run.log"
 
 if [[ $# -lt 1 ]]; then
-  echo "usage: bash ml_research/scripts/uni_run.sh <path to the Kaggle zip> [--foreground] [options]" >&2
+  echo "usage: bash ml_research/scripts/uni_run.sh <path to the Kaggle zip or extracted folder> [--foreground] [options]" >&2
   exit 2
 fi
 RAW="$1"; shift
@@ -25,7 +25,7 @@ for arg in "$@"; do
 done
 
 [[ -x "$OSCC" ]] || { echo "RUN FAILED: ml_research/.venv missing -- FIX: run scripts/uni_setup.sh first" >&2; exit 1; }
-[[ -e "$RAW" ]] || { echo "RUN FAILED: $RAW not found -- FIX: give the full path to the Kaggle zip" >&2; exit 1; }
+[[ -e "$RAW" ]] || { echo "RUN FAILED: $RAW not found -- FIX: give the full path to the Kaggle zip or extracted folder" >&2; exit 1; }
 RAW="$(cd "$(dirname "$RAW")" && pwd)/$(basename "$RAW")"
 mkdir -p "$ML/runs"
 

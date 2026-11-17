@@ -91,7 +91,7 @@ The example values are for development only. Never commit `.env`.
 | CPU smoke training (R0) | `oscc-ml train --model resnet50 --smoke` |
 | University GPU setup / check | `ml_research/scripts/uni_setup.{ps1,sh}` then `uni_check.{ps1,sh}` |
 | Training pipeline (R2) | `oscc-ml sweep` → `oscc-ml train-all --resume` → `oscc-ml evaluate` → `oscc-ml report` → `oscc-ml pack-results` |
-| Prepare the dataset (R1) | `oscc-ml prepare --raw <Kaggle zip or folder>`; local sample: `oscc-ml make-sample --zip <zip> --per-class 30` |
+| Prepare the dataset (R1) | `oscc-ml prepare --raw <Kaggle zip or folder>`; local sample: `oscc-ml make-sample --raw <zip or folder> --per-class 30` |
 | Full university run | `ml_research/scripts/uni_run.{ps1,sh} <zip>`; step-by-step guide: [`docs/UNI_RUNBOOK.md`](docs/UNI_RUNBOOK.md) |
 | Bring results home | `oscc-ml import-results results_small.zip` then `oscc-ml report` (needs only the core install, no torch) |
 | Research tests | `cd ml_research && pytest` |
