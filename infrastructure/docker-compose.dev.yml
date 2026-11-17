@@ -1,0 +1,136 @@
+# Development stack. Usage (from the repository root):
+#   cp infrastructure/.env.example infrastructure/.env
+#   docker compose -f infrastructure/docker-compose.dev.yml up --build --wait
+# Every service has a healthcheck; `--wait` returns only when all are healthy.
+# Host ports are bound to 127.0.0.1 so nothing is exposed to the local network.
+
+name: oscc-dev
+
+x-api-env: &api-env
+  env_file: .env
+
+services:
+  db:
+    image: pgvector/pgvector:0.8.7-pg16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?set in infrastructure/.env}
+      POSTGRES_USER: ${POSTGRES_USER:?set in infrastructure/.env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in infrastructure/.env}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  storage:
+    image: chrislusf/seaweedfs:4.54
+    entrypoint: ["/bin/sh", "/opt/oscc/entrypoint.sh"]
+    environment:
+      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:?set in infrastructure/.env}
+      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:?set in infrastructure/.env}
+    volumes:
+      - ./storage/entrypoint.sh:/opt/oscc/entrypoint.sh:ro
+      - storage-data:/data
+    ports:
+      - "127.0.0.1:8333:8333"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8333/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
+
+  mailpit:
+    image: axllent/mailpit:v1.34.0
+    ports:
+      - "127.0.0.1:8025:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    <<: *api-env
+    build: ../api
+    command: >-
+      sh -c "python -m app.cli ensure-bucket &&
+      exec uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000 --no-access-log"
+    depends_on:
+      db:
+        condition: service_healthy
+      storage:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=3).status == 200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  worker:
+    <<: *api-env
+    build: ../api
+    command: ["python", "-m", "app.worker"]
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.worker", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    restart: unless-stopped
+
+  inference:
+    build: ../inference
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8001/readyz', timeout=3).status == 200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile.dev
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000/api/v1}
+    ports:
+      - "127.0.0.1:5173:5173"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:5173/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  db-data:
+  storage-data:
