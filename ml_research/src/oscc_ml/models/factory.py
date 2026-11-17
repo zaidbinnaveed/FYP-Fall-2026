@@ -7,6 +7,7 @@ R0 registers ResNet50. EfficientNet-B0, DenseNet121 and ViT-B/16 (HuggingFace
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import cast
 
 from torch import nn
 from torchvision import models
@@ -18,9 +19,9 @@ def _resnet50(pretrained: bool) -> nn.Module:
     # torchvision ImageNet-1k weights (CLAUDE.md section 4). V1 is the original torchvision
     # recipe; confirm the variant at gate G2 together with the other R2 settings.
     weights = models.ResNet50_Weights.IMAGENET1K_V1 if pretrained else None
-    model = models.resnet50(weights=weights)
+    model = models.resnet50(weights=weights)  # torchvision is untyped (Any)
     model.fc = nn.Linear(model.fc.in_features, 1)
-    return model
+    return cast("nn.Module", model)
 
 
 _REGISTRY: dict[str, Builder] = {"resnet50": _resnet50}

@@ -28,7 +28,9 @@ def environment_info(device: torch.device) -> dict[str, Any]:
         if cuda_available
         else []
     )
-    cudnn = torch.backends.cudnn.version() if torch.backends.cudnn.is_available() else None
+    # torch.backends.cudnn has no type annotations.
+    cudnn_ok = torch.backends.cudnn.is_available()  # type: ignore[no-untyped-call]
+    cudnn = torch.backends.cudnn.version() if cudnn_ok else None  # type: ignore[no-untyped-call]
     return {
         "python": sys.version.split()[0],
         "platform": platform.platform(),

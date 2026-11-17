@@ -159,20 +159,26 @@ jobs:
       - name: Check the lockfile is up to date
         run: uv lock --check
       - name: Install pinned deps with CPU torch (lockfile stays platform-neutral)
+        id: install
         run: |
           uv venv --python 3.11 .venv
           echo "VIRTUAL_ENV=$PWD/.venv" >> "$GITHUB_ENV"
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
           VIRTUAL_ENV="$PWD/.venv" bash scripts/install_pinned.sh --torch cpu --extra train --dev
       - name: Ruff lint
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: ruff check .
       - name: Ruff format
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: ruff format --check .
       - name: Mypy (strict)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: mypy
       - name: Pytest (unit, protocol guard, smoke runs, determinism)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: pytest -v
       - name: "R0 acceptance: oscc-ml train --model resnet50 --smoke (5-minute limit)"
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         timeout-minutes: 5
         run: |
           start=$(date +%s)
