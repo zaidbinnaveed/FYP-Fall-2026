@@ -1,5 +1,5 @@
 # Development image: Vite dev server with hot reload (production serves static files via Nginx, D7).
-FROM node:24.22.3-alpine
+FROM node:26.13.1-alpine
 WORKDIR /srv/frontend
 # Vite writes a temporary bundled config next to vite.config.ts, so the app directory must be
 # owned by the unprivileged user that runs the server.
