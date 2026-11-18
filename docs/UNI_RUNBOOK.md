@@ -3,9 +3,9 @@
 This runbook takes you from an empty university machine to baseline results on your laptop at home.
 - **No Claude Code is needed at the university.** Every step is a script that is already in the repository.
 - **The scripts work on Windows and Linux.** Each step shows both versions.
-- **The dataset can come either way:** the Kaggle zip (`archive.zip`, 3.15 GB), or the folder extracted from it. Every command below accepts both.
+- **Code:** `git clone` over HTTPS from the public GitHub repository. This is the only route for the code, and it needs no login. The machine clones `main`.
+- **Dataset (recommended route):** the Kaggle zip `archive.zip` (3.15 GB), copied from a USB stick into `ml_research\data\raw\kaggle_kebede\`. The scripts read the zip directly and nothing is unpacked. The extracted folder still works as a fallback (section 1).
 - **Never store a password, token or key on the university machine.**
-  - The GitHub repository is public, so cloning needs no login.
   - The dataset arrives on a USB stick.
   - Do not sign in to Kaggle or GitHub there.
 
@@ -26,25 +26,24 @@ kaggle_kebede/
 - There are 1,224 originals in total (290 Normal, 934 OSCC), matching the Rahman release.
 - The `aug_*` files are the publisher's 224×224 augmented copies. Their names carry no magnification and no link to the original. `prepare` excludes them by name, and the manifest lists each one.
 
-1. **If you bring the zip, check that it finished downloading.**
+1. **Check that `archive.zip` finished downloading.**
    - No `.crdownload` or `.partial` file is left.
    - The zip opens and lists its files without errors.
    - Optional: list it in Python without unpacking it: `python -c "import zipfile,sys; z=zipfile.ZipFile(sys.argv[1]); print(len(z.namelist()), 'entries'); print(z.testzip() or 'CRC OK')" <zip>`
 2. **Record its checksum.** You will compare it after copying.
    - Windows: `Get-FileHash -Algorithm SHA256 <zip>`
    - Linux: `sha256sum <zip>`
-3. **Copy the zip, or the extracted `kaggle_kebede` folder, to a USB stick.** Use exFAT or NTFS: FAT32 cannot hold files over 4 GB.
-   - **If you copy the folder**, record its file count and total size for comparison:
+3. **Copy `archive.zip` to a USB stick** formatted as exFAT or NTFS.
+   - Fallback only: if you bring the extracted `kaggle_kebede` folder instead, record its file count and size for comparison. Expect Count = 5192.
      - Windows: `Get-ChildItem -Recurse -File <folder> | Measure-Object -Property Length -Sum`
      - Linux: `find <folder> -type f | wc -l; du -sb <folder>`
-     - Expect Count = 5192.
-4. **If the university machine has no `git`,** also download the repository as a ZIP from GitHub (Code → Download ZIP) onto the USB stick.
+4. **Check that `main` on GitHub has everything you need.** The university machine clones `main`.
 
 ## 1. Get the code and the zip onto the university machine
 
 Work in a folder you own, so nothing needs admin rights. Examples: `C:\Users\<you>\oscc` or `D:\oscc` on Windows, `~/oscc` on Linux.
 
-**With git (preferred):** this is an HTTPS clone of a public repository, so it needs no credentials.
+**Code: `git clone` only.** It is an HTTPS clone of a public repository, so it needs no credentials. Check first with `git --version`. If git is missing, ask IT to install Git. Do not bring the code another way: every run records the git commit.
 
 ```powershell
 # Windows PowerShell (NOT "Run as administrator")
@@ -60,25 +59,23 @@ git clone https://github.com/zaidbinnaveed/FYP-Fall-2026.git
 cd FYP-Fall-2026
 ```
 
-**Without git:** unzip the repository ZIP from the USB stick into the same place. The folder will be called `FYP-Fall-2026-main`; use it in place of `FYP-Fall-2026` below.
-
-**Copy the dataset** into the gitignored raw-data folder, then check that it copied correctly. Use **either** the zip (first two blocks) **or** the extracted folder (last two blocks). The scripts only **read** `ml_research/data/raw/`; nothing there is ever moved, changed or deleted.
+**Copy the dataset (recommended: the zip)** into the gitignored raw-data folder, then check that it copied correctly. Replace `E:` with your USB drive letter. The scripts only **read** `ml_research/data/raw/`; nothing there is ever moved, changed or deleted.
 
 ```powershell
 # Windows
 mkdir ml_research\data\raw\kaggle_kebede -Force
-copy E:\<your zip>.zip ml_research\data\raw\kaggle_kebede\
-Get-FileHash -Algorithm SHA256 ml_research\data\raw\kaggle_kebede\<your zip>.zip   # must match home
+copy E:\archive.zip ml_research\data\raw\kaggle_kebede\
+Get-FileHash -Algorithm SHA256 ml_research\data\raw\kaggle_kebede\archive.zip   # must match the hash taken at home
 ```
 
 ```bash
 # Linux
 mkdir -p ml_research/data/raw/kaggle_kebede
-cp /media/<you>/<usb>/<your zip>.zip ml_research/data/raw/kaggle_kebede/
-sha256sum ml_research/data/raw/kaggle_kebede/<your zip>.zip                       # must match home
+cp /media/<you>/<usb>/archive.zip ml_research/data/raw/kaggle_kebede/
+sha256sum ml_research/data/raw/kaggle_kebede/archive.zip                       # must match the hash taken at home
 ```
 
-**Or the extracted folder.** `kaggle_kebede` holds `train/`, `val/` and `test/` directly.
+**Fallback: the extracted folder.** Use this only if you brought the folder instead of the zip. `kaggle_kebede` holds `train/`, `val/` and `test/` directly.
 
 ```powershell
 # Windows (robocopy is built in; /E copies sub-folders)
@@ -92,7 +89,7 @@ mkdir -p ml_research/data/raw && cp -r /media/<you>/<usb>/kaggle_kebede ml_resea
 find ml_research/data/raw/kaggle_kebede -type f | wc -l          # must be 5192
 ```
 
-In the commands below, `<dataset>` is **either** `ml_research/data/raw/kaggle_kebede` (the folder) **or** `ml_research/data/raw/kaggle_kebede/<your zip>.zip`.
+In the commands below, `<dataset>` is `ml_research/data/raw/kaggle_kebede/archive.zip` (recommended). With the folder fallback, it is `ml_research/data/raw/kaggle_kebede`.
 
 ## 2. One-time setup (no admin rights)
 
@@ -160,23 +157,19 @@ rm -rf ml_research/data/dryrun
 
 ## 5. The real run
 
-`uni_run` runs `prepare → sweep → train-all → evaluate → report → pack-results` in the background. It takes **the extracted folder or the zip** (`<dataset>` from section 1). The examples use the folder.
+`uni_run` runs `prepare → sweep → train-all → evaluate → report → pack-results` in the background. It takes `<dataset>` from section 1; the examples use the zip.
 
-> **Decision needed before the run: the tissue threshold.**
-> - On the 60-image sample of the real data, the agreed O5 filter (plain Otsu on saturation) kept only 31% of grid tiles. 11 of the 60 images fell back to a single tile.
-> - With the threshold capped at 40, it kept 82% of tiles, with no fallbacks.
-> - If the team adopts the cap, add `-MaxTissueThreshold 40` (Windows) or `--max-tissue-threshold 40` (Linux) to the command below.
-> - Use the same value for every run; it is recorded in `dataset.json`.
+The tissue filter is the capped rule from ADR-0002 (`max_tissue_threshold: 40` in `protocol.yaml`). It is the default, so no extra option is needed.
 
 ```powershell
 # Windows: opens a separate minimized window
-powershell -ExecutionPolicy Bypass -File ml_research\scripts\uni_run.ps1 -Raw ml_research\data\raw\kaggle_kebede
+powershell -ExecutionPolicy Bypass -File ml_research\scripts\uni_run.ps1 -Raw ml_research\data\raw\kaggle_kebede\archive.zip
 Get-Content -Wait ml_research\runs\uni_run.log      # watch progress (Ctrl+C stops watching, not the run)
 ```
 
 ```bash
 # Linux: uses tmux if installed, otherwise nohup (survives logging out)
-bash ml_research/scripts/uni_run.sh ml_research/data/raw/kaggle_kebede
+bash ml_research/scripts/uni_run.sh ml_research/data/raw/kaggle_kebede/archive.zip
 tail -f ml_research/runs/uni_run.log               # watch progress (Ctrl+C stops watching, not the run)
 ```
 
@@ -186,7 +179,7 @@ tail -f ml_research/runs/uni_run.log               # watch progress (Ctrl+C stop
   - Excludes the publisher's `aug_*` copies by name.
   - Removes duplicate and near-duplicate originals (pHash, SHA-256).
   - Makes a grouped, stratified 70:15:15 split with seed 42 and runs the leakage test.
-  - Writes 224×224 patches with the O5 rule.
+  - Writes 224×224 patches with the O5 rule and the ADR-0002 tissue cap.
   - Prints a count table per class, split and magnification. Keep it for the dataset audit.
 - **sweep:** short runs of all four models for each learning rate in `protocol.yaml`; writes `runs/sweep/chosen_lr.json`.
 - **train-all:** trains the four models with seed 42 and the chosen learning rate. The log shows seconds per epoch and an ETA.
