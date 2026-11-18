@@ -154,7 +154,8 @@ def _assign_groups(
 
 
 def protocol_tiling(max_tissue_threshold: int | None = None) -> TilingParams:
-    """Tiling parameters from configs/protocol.yaml (O5), plus the optional threshold cap."""
+    """Tiling parameters from configs/protocol.yaml (O5 + ADR-0002). ``max_tissue_threshold``
+    overrides the protocol's cap (ablations only; 255 = plain Otsu)."""
     from oscc_ml.config import load_protocol
 
     cfg = load_protocol().data.tiling
@@ -163,7 +164,9 @@ def protocol_tiling(max_tissue_threshold: int | None = None) -> TilingParams:
         resize_if_both_sides_below=cfg.resize_if_both_sides_below,
         min_tissue_fraction=cfg.min_tissue_fraction,
         max_patches_per_image=cfg.max_patches_per_image,
-        max_tissue_threshold=max_tissue_threshold,
+        max_tissue_threshold=(
+            cfg.max_tissue_threshold if max_tissue_threshold is None else max_tissue_threshold
+        ),
     )
 
 

@@ -375,7 +375,9 @@ def prepare_command(
     ] = None,
     max_tissue_threshold: Annotated[
         int | None,
-        typer.Option(help="Cap the Otsu saturation threshold (0-255); default: plain Otsu (O5)"),
+        typer.Option(
+            help="Override the Otsu cap (0-255; protocol default 40, ADR-0002; 255 = plain Otsu)"
+        ),
     ] = None,
     seed: Annotated[int, typer.Option()] = 42,
     force: Annotated[
@@ -478,7 +480,7 @@ def uni_run_command(
     device: Device = "auto",
     sweep_epochs: Annotated[int, typer.Option(help="Epochs per LR-sweep trial")] = 5,
     max_tissue_threshold: Annotated[
-        int | None, typer.Option(help="Cap the Otsu saturation threshold (see prepare)")
+        int | None, typer.Option(help="Override the Otsu cap (see prepare; default from protocol)")
     ] = None,
     epochs: Annotated[int | None, typer.Option(help="TEST ONLY: shorten training")] = None,
     random_init: RandomInit = False,

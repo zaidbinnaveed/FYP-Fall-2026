@@ -4,8 +4,8 @@
 # Every step is skipped when already complete, so running this again after a crash or reboot
 # continues where it stopped. Full log with tracebacks: ml_research/runs/uni_run.log
 #
-#   bash ml_research/scripts/uni_run.sh /path/to/kaggle_kebede   # zip or folder; background (tmux or nohup)
-#   bash ml_research/scripts/uni_run.sh /path/to/kaggle.zip --foreground   # in this terminal
+#   bash ml_research/scripts/uni_run.sh ml_research/data/raw/kaggle_kebede/archive.zip   # background (tmux or nohup)
+#   bash ml_research/scripts/uni_run.sh <zip or extracted folder> --foreground   # in this terminal
 # Further options are passed to `oscc-ml uni-run` (see `oscc-ml uni-run --help`).
 set -euo pipefail
 

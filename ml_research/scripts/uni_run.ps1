@@ -4,10 +4,10 @@ Full pipeline on the university GPU machine (Windows):
 Every step is skipped when already complete, so running this again after a crash or reboot
 continues where it stopped. Full log with tracebacks: ml_research\runs\uni_run.log
 
-  powershell -ExecutionPolicy Bypass -File ml_research\scripts\uni_run.ps1 -Raw ml_research\data\raw\kaggle_kebede
-  (-Raw takes the extracted folder or the zip)
+  powershell -ExecutionPolicy Bypass -File ml_research\scripts\uni_run.ps1 -Raw ml_research\data\raw\kaggle_kebede\archive.zip
+  (-Raw takes the zip (recommended) or the extracted folder)
   ... -Foreground          # run in this window instead of a separate minimized window
-  ... -MaxTissueThreshold 40   # cap the Otsu tissue threshold (only if the team decided so)
+  ... -MaxTissueThreshold 255  # ablation only: override the protocol's tissue cap (default 40, ADR-0002)
   ... -ExtraArgs "--sweep-epochs","5"   # further options for `oscc-ml uni-run`
 
 The background run opens its own minimized window. Do not close it and do not sign out of

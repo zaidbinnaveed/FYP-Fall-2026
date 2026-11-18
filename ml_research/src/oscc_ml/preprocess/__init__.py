@@ -9,10 +9,10 @@ Tiling rule (decision O5, accepted):
   dropped); keep patches whose tissue fraction is >= ``min_tissue_fraction`` (0.5), where tissue
   = saturation above the image's Otsu threshold; if more than ``max_patches_per_image`` (64)
   remain, keep that many evenly spaced (in raster order).
-* Optional (``max_tissue_threshold``, off by default = O5 as agreed): cap the Otsu threshold.
-  On frames that are almost all tissue, Otsu splits pale eosin from dense haematoxylin instead of
-  tissue from glass; the cap keeps pale tissue. Recorded in dataset.json; inference must use the
-  same value.
+* O5 amendment (ADR-0002, adopted): the Otsu threshold is capped at ``max_tissue_threshold``
+  (40). On frames that are almost all tissue, plain Otsu splits pale eosin from dense
+  haematoxylin instead of tissue from glass; the cap keeps pale tissue. ``None`` (or 255) gives
+  plain Otsu. Recorded in dataset.json; inference must use the same value.
 * If no patch reaches the tissue threshold, keep the single patch with the most tissue
   (``mode = "grid_fallback"``), so no image is silently lost; the manifest records it.
 """
@@ -26,7 +26,7 @@ import torch
 from numpy.typing import NDArray
 from PIL import Image
 
-PREPROCESS_VERSION = "pp-0.2.0"
+PREPROCESS_VERSION = "pp-0.3.0"  # 0.3.0: capped tissue threshold by default (ADR-0002)
 
 IMAGENET_MEAN: tuple[float, float, float] = (0.485, 0.456, 0.406)
 IMAGENET_STD: tuple[float, float, float] = (0.229, 0.224, 0.225)
@@ -92,7 +92,7 @@ class TilingParams:
     resize_if_both_sides_below: int = 448
     min_tissue_fraction: float = 0.5
     max_patches_per_image: int = 64
-    max_tissue_threshold: int | None = None  # None: plain Otsu (O5)
+    max_tissue_threshold: int | None = 40  # ADR-0002; None: plain Otsu (original O5)
 
 
 @dataclass
