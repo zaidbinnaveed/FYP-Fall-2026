@@ -18,15 +18,20 @@ def aggregate_to_images(patches: pd.DataFrame) -> pd.DataFrame:
     """Image probability = mean of its patch probabilities (SDS classification logic).
 
     Expects columns ``image_id, label, oscc_probability``; a label must be constant per image.
+    ``group_id`` and ``magnification`` are carried through when present.
     """
     grouped = patches.groupby("image_id", sort=True)
     if (grouped["label"].nunique() > 1).any():
         raise ValueError("an image has patches with different labels")
-    images = grouped.agg(
-        label=("label", "first"),
-        oscc_probability=("oscc_probability", "mean"),
-        n_patches=("oscc_probability", "size"),
-    )
+    spec: dict[str, tuple[str, str]] = {
+        "label": ("label", "first"),
+        "oscc_probability": ("oscc_probability", "mean"),
+        "n_patches": ("oscc_probability", "size"),
+    }
+    for column in ("group_id", "magnification"):
+        if column in patches.columns:
+            spec[column] = (column, "first")
+    images = grouped.agg(**spec)
     return images.reset_index()
 
 

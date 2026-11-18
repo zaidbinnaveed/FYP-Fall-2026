@@ -1,1 +1,1 @@
-"""Trainer, early stopping, AMP, checkpointing and run folders. The LR sweep is Phase R2."""
+"""Trainer (early stopping, AMP, resumable checkpoints), run folders, LR sweep, train-all."""

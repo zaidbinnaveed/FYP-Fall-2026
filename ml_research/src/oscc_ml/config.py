@@ -128,8 +128,14 @@ class Protocol(_Strict):
 
 
 class RunSettings(_Strict):
-    """What this particular run actually used (after smoke overrides)."""
+    """What this particular run actually used.
 
+    ``deviations`` lists every way the run differs from the protocol (smoke mode, random
+    initialization, shortened epochs, manual LR, ...). ``protocol_compliant`` is True only when
+    there are none; reports refuse non-compliant runs.
+    """
+
+    purpose: Literal["smoke", "sweep", "train"]
     smoke: bool
     seed: int
     epochs: int
@@ -139,6 +145,13 @@ class RunSettings(_Strict):
     deterministic: Literal["strict", "warn"]
     device: str
     dataset_version: str
+    lr: float
+    lr_source: str
+    deviations: tuple[str, ...] = ()
+
+    @property
+    def protocol_compliant(self) -> bool:
+        return not self.deviations
 
 
 class ResolvedConfig(_Strict):
@@ -199,11 +212,20 @@ def resolve(
     device: str,
     dataset_version: str,
     directory: Path | None = None,
+    purpose: Literal["smoke", "sweep", "train"] | None = None,
+    lr: float | None = None,
+    lr_source: str | None = None,
+    epochs: int | None = None,
+    batch_size: int | None = None,
+    pretrained: bool | None = None,
 ) -> ResolvedConfig:
+    """Merge protocol + model config + run options; record every deviation from the protocol."""
     protocol = load_protocol(directory)
     architecture = load_model_config(model, directory)
+    deviations: list[str] = []
     if smoke:
         run = RunSettings(
+            purpose="smoke",
             smoke=True,
             seed=protocol.seed if seed is None else seed,
             epochs=protocol.smoke.epochs,
@@ -213,17 +235,42 @@ def resolve(
             deterministic=protocol.smoke.deterministic,
             device=device,
             dataset_version=dataset_version,
+            lr=protocol.optimizer.lr,
+            lr_source="protocol placeholder",
+            deviations=("smoke run (ADR-0001 G-e)",),
         )
-    else:
-        run = RunSettings(
-            smoke=False,
-            seed=protocol.seed if seed is None else seed,
-            epochs=protocol.training.max_epochs,
-            batch_size=protocol.training.batch_size,
-            num_workers=protocol.data.num_workers,
-            pretrained=True,
-            deterministic=protocol.training.deterministic,
-            device=device,
-            dataset_version=dataset_version,
-        )
+        return ResolvedConfig(architecture=architecture, protocol=protocol, run=run)
+
+    purpose = purpose or "train"
+    run_epochs = protocol.training.max_epochs if epochs is None else epochs
+    run_batch = protocol.training.batch_size if batch_size is None else batch_size
+    run_pretrained = True if pretrained is None else pretrained
+    run_lr = protocol.optimizer.lr if lr is None else lr
+    run_lr_source = lr_source or ("protocol placeholder" if lr is None else "manual")
+    if dataset_version.startswith("synthetic"):
+        deviations.append("synthetic dataset")
+    if not run_pretrained:
+        deviations.append("random initialization instead of ImageNet weights")
+    if purpose == "train":
+        if run_epochs != protocol.training.max_epochs:
+            deviations.append(f"max epochs {run_epochs} instead of {protocol.training.max_epochs}")
+        if run_lr_source != "sweep":
+            deviations.append(f"learning rate from {run_lr_source}, not from the shared sweep")
+    if run_batch > protocol.training.batch_size:
+        deviations.append(f"batch size {run_batch} above protocol {protocol.training.batch_size}")
+    run = RunSettings(
+        purpose=purpose,
+        smoke=False,
+        seed=protocol.seed if seed is None else seed,
+        epochs=run_epochs,
+        batch_size=run_batch,
+        num_workers=protocol.data.num_workers,
+        pretrained=run_pretrained,
+        deterministic=protocol.training.deterministic,
+        device=device,
+        dataset_version=dataset_version,
+        lr=run_lr,
+        lr_source=run_lr_source,
+        deviations=tuple(deviations),
+    )
     return ResolvedConfig(architecture=architecture, protocol=protocol, run=run)

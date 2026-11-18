@@ -121,11 +121,19 @@ cd api && uv run ruff check . && uv run mypy && uv run lint-imports        # API
 cd api && uv run alembic upgrade head                                      # migrations (first revision in D1)
 cd api && uv run python -m app.cli create-admin                            # first administrator (Phase D1)
 cd inference && uv sync && uv run pytest                                   # inference service tests
-cd ml_research && uv venv && bash scripts/install_pinned.sh --torch cpu --extra train --dev   # research package, CPU torch
-#   lab GPU: --torch locked   |   Colab/Kaggle: --torch platform (see notebooks/oscc_ml_runner.ipynb)
+cd ml_research && uv venv && bash scripts/install_pinned.sh --torch cpu --extra train --dev   # research package, CPU torch (laptop/CI)
+#   Colab/Kaggle: --torch platform (notebooks/oscc_ml_runner.ipynb)   |   lab GPU: --torch locked
+# University GPU machine (Windows: .ps1 via `powershell -ExecutionPolicy Bypass -File ...`; Linux: .sh):
+ml_research/scripts/uni_setup.{ps1,sh}                                     # uv venv, CUDA torch matching nvidia-smi, oscc_ml (no admin)
+ml_research/scripts/uni_check.{ps1,sh}                                     # Python, GPU/VRAM, disk, write access, weights, 2-min GPU smoke
 oscc-ml train --model resnet50 --smoke                                     # CPU smoke training (synthetic, not reportable)
-oscc-ml env                                                                # environment info recorded by every run
-oscc-ml report                                                             # regenerate results from runs/ (Phase R2/R3)
+oscc-ml sweep                                                              # shared LR sweep -> runs/sweep/chosen_lr.json (resumable)
+oscc-ml train-all --resume                                                 # 4 models x seed 42 with the chosen LR (resumable)
+oscc-ml evaluate                                                           # tau from val, test metrics + grouped bootstrap CIs, params/GFLOPs/latency
+oscc-ml report --copy-to ../docs/results/baseline_fyp1.md                  # baseline table from run folders only (refuses smoke/synthetic)
+oscc-ml pack-results                                                       # runs/export/results_small.zip + checkpoints.zip (SHA-256 manifest)
+oscc-ml import-results results_small.zip                                   # at home: verify + unpack into runs/, then `oscc-ml report`
+oscc-ml check / oscc-ml env / oscc-ml make-synthetic-data --out <dir>      # readiness check / environment info / test data
 cd frontend && npm ci && npm run dev                                       # SPA dev server
 cd frontend && npm test && npx playwright test                             # unit + e2e (Playwright from D6)
 ```

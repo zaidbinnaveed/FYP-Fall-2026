@@ -1,32 +1,36 @@
-"""Deterministic synthetic images for the CPU smoke run (ADR-0001 G-e).
+"""Deterministic synthetic datasets for smoke runs and CI (ADR-0001 G-e).
 
-These are NOT histology and carry no research meaning. They exist only to exercise the training
-pipeline end to end. Runs that use them have ``dataset_version == SYNTHETIC_DATASET_VERSION`` and
-``smoke: true``, and the report generator refuses them.
+These are NOT histology and carry no research meaning. They are written in exactly the prepared
+dataset format (``oscc_ml.data.processed``) so that CI exercises the real training data path.
+Their ``dataset_version`` always starts with ``synthetic``; reports refuse such runs.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 from numpy.typing import NDArray
 
+from oscc_ml.data.processed import (
+    SPLITS,
+    PatchMeta,
+    PatchWriter,
+    write_dataset_info,
+    write_images_table,
+)
+from oscc_ml.preprocess import PREPROCESS_VERSION
+
 SYNTHETIC_DATASET_VERSION = "synthetic-smoke"
-LABELS = {0: "non_oscc", 1: "oscc"}
+SYNTHETIC_PREFIX = "synthetic"
 
 
-@dataclass(frozen=True)
-class PatchRecord:
-    image_id: str
-    patch_index: int
-    label: int  # 1 = oscc, 0 = non_oscc
-    pixels: NDArray[np.uint8]  # HxWx3 RGB
+def is_synthetic(dataset_version: str) -> bool:
+    return dataset_version.startswith(SYNTHETIC_PREFIX)
 
 
-def _make_image(rng: np.random.Generator, label: int, size: int) -> NDArray[np.uint8]:
-    # Pink background for both classes; class 1 gets more and darker purple blobs. A learnable
-    # difference keeps the smoke run meaningful as a pipeline check (loss can go down).
+def synthetic_patch(rng: np.random.Generator, label: int, size: int) -> NDArray[np.uint8]:
+    """Pink background; class 1 has more and darker purple blobs (a learnable difference)."""
     base = np.array([230, 170, 200], dtype=np.float64)
     image = np.tile(base, (size, size, 1)) + rng.normal(0.0, 12.0, (size, size, 3))
     yy, xx = np.mgrid[0:size, 0:size]
@@ -40,21 +44,62 @@ def _make_image(rng: np.random.Generator, label: int, size: int) -> NDArray[np.u
     return np.clip(image, 0, 255).astype(np.uint8)
 
 
-def make_split(name: str, count: int, seed: int, size: int = 224) -> list[PatchRecord]:
-    """``count`` single-patch images, half per class, alternating labels; fully seed-determined."""
-    if count % 2:
-        raise ValueError("count must be even so both classes are balanced")
-    offsets = {"train": 0, "val": 1, "test": 2}
-    rng = np.random.default_rng([seed, offsets[name]])
-    records = []
-    for i in range(count):
-        label = i % 2
-        records.append(
-            PatchRecord(
-                image_id=f"synthetic-{name}-{i:03d}",
-                patch_index=0,
-                label=label,
-                pixels=_make_image(rng, label, size),
-            )
-        )
-    return records
+def write_synthetic_dataset(
+    root: Path,
+    images_per_split: tuple[int, int, int],
+    seed: int,
+    *,
+    patches_per_image: tuple[int, int] = (1, 1),
+    patch_size: int = 224,
+    dataset_version: str = SYNTHETIC_DATASET_VERSION,
+) -> Path:
+    """Write a balanced synthetic dataset. Images are grouped in pairs (same label) so grouped
+    resampling is exercised; groups never cross splits. Returns ``root``."""
+    if not is_synthetic(dataset_version):
+        raise ValueError("synthetic datasets must have a dataset_version starting 'synthetic'")
+    rng = np.random.default_rng(seed)
+    image_rows = []
+    counts: dict[str, dict[str, int]] = {}
+    for split, n_images in zip(SPLITS, images_per_split, strict=True):
+        if n_images < 4 or n_images % 4:
+            raise ValueError("each split needs a multiple of 4 images (2 classes x pairs)")
+        n_patches_total = 0
+        with PatchWriter(root, split, patch_size) as writer:
+            for i in range(n_images):
+                label = (i // 2) % 2  # pairs: 0,0,1,1,0,0,...
+                group_id = f"synthetic-{split}-g{i // 2:03d}"
+                image_id = f"synthetic-{split}-{i:03d}"
+                magnification = "100x" if i % 4 < 2 else "400x"
+                low, high = patches_per_image
+                n_patches = int(rng.integers(low, high + 1))
+                for p in range(n_patches):
+                    writer.add(
+                        synthetic_patch(rng, label, patch_size),
+                        PatchMeta(image_id, p, label, group_id, "synthetic", magnification),
+                    )
+                image_rows.append(
+                    {
+                        "image_id": image_id,
+                        "split": split,
+                        "label": label,
+                        "group_id": group_id,
+                        "source": "synthetic",
+                        "magnification": magnification,
+                        "n_patches": n_patches,
+                    }
+                )
+                n_patches_total += n_patches
+        counts[split] = {"images": n_images, "patches": n_patches_total}
+    write_images_table(root, image_rows)
+    write_dataset_info(
+        root,
+        {
+            "dataset_version": dataset_version,
+            "preprocess_version": PREPROCESS_VERSION,
+            "patch_size": patch_size,
+            "seed": seed,
+            "counts": counts,
+            "note": "synthetic data for pipeline checks only; not reportable",
+        },
+    )
+    return root

@@ -1,0 +1,2 @@
+# Per-model config: ONLY the architecture name is allowed here (FR-7.6, SDS Appendix A).
+architecture: efficientnet_b0

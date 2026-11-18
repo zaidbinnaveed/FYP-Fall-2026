@@ -1,41 +1,79 @@
-"""Fast unit tests: synthetic data, preprocessing, metrics, seeding, schedule, factory."""
+"""Fast unit tests: synthetic/prepared data format, preprocessing, metrics, seeding, schedule."""
 
 from __future__ import annotations
 
 import itertools
 import math
+import pickle
 import random
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
 import torch
 
-from oscc_ml.data.synthetic import make_split
+from oscc_ml.data.processed import (
+    MemmapPatchDataset,
+    PatchMeta,
+    PatchWriter,
+    open_patches,
+    read_dataset_info,
+    read_patch_index,
+)
+from oscc_ml.data.synthetic import is_synthetic, write_synthetic_dataset
 from oscc_ml.eval.metrics import aggregate_to_images, auc_or_none, binary_metrics
-from oscc_ml.models.factory import build_model, parameter_count
 from oscc_ml.preprocess import IMAGENET_MEAN, IMAGENET_STD, normalize, to_float_tensor
-from oscc_ml.train.trainer import lr_lambda, pos_weight_from
+from oscc_ml.train.trainer import epoch_generator, lr_lambda, pos_weight_from
 from oscc_ml.utils.seeding import make_generator, seed_everything, worker_init_fn
 
 
-def test_synthetic_split_is_deterministic_and_balanced() -> None:
-    a = make_split("train", 16, seed=42)
-    b = make_split("train", 16, seed=42)
-    c = make_split("train", 16, seed=43)
-    assert [r.image_id for r in a] == [r.image_id for r in b]
-    assert all(np.array_equal(x.pixels, y.pixels) for x, y in zip(a, b, strict=True))
-    assert not np.array_equal(a[0].pixels, c[0].pixels)
-    assert sum(r.label for r in a) == 8
-    assert a[0].pixels.shape == (224, 224, 3)
-    assert a[0].pixels.dtype == np.uint8
+def _identity(x: torch.Tensor) -> torch.Tensor:
+    return x
 
 
-def test_splits_never_share_image_ids() -> None:
-    ids = [{r.image_id for r in make_split(name, 8, seed=42)} for name in ("train", "val", "test")]
-    assert not ids[0] & ids[1]
-    assert not ids[0] & ids[2]
-    assert not ids[1] & ids[2]
+def test_synthetic_dataset_is_deterministic_and_balanced(tmp_path: Path) -> None:
+    a = write_synthetic_dataset(tmp_path / "a", (8, 4, 4), seed=7, patches_per_image=(1, 3))
+    b = write_synthetic_dataset(tmp_path / "b", (8, 4, 4), seed=7, patches_per_image=(1, 3))
+    for split in ("train", "val", "test"):
+        assert (a / f"patches_{split}.u8").read_bytes() == (b / f"patches_{split}.u8").read_bytes()
+        images = read_patch_index(a, split).drop_duplicates("image_id")
+        assert images["label"].sum() * 2 == len(images)
+    info = read_dataset_info(a)
+    assert is_synthetic(info["dataset_version"])
+    assert info["patch_size"] == 224
+
+
+def test_groups_never_cross_splits(tmp_path: Path) -> None:
+    root = write_synthetic_dataset(tmp_path, (8, 4, 4), seed=1)
+    groups = [set(read_patch_index(root, s)["group_id"]) for s in ("train", "val", "test")]
+    for x, y in itertools.combinations(groups, 2):
+        assert not x & y
+
+
+def test_patch_writer_roundtrip_and_size_check(tmp_path: Path) -> None:
+    pixels = np.arange(4 * 4 * 3, dtype=np.uint8).reshape(4, 4, 3)
+    with PatchWriter(tmp_path, "train", 4) as writer:
+        writer.add(pixels, PatchMeta("img", 0, 1, "g", "src", "100x"))
+        writer.add(pixels[::-1].copy(), PatchMeta("img", 1, 1, "g", "src", "100x"))
+    array = open_patches(tmp_path, "train", 2, 4)
+    assert np.array_equal(array[0], pixels)
+    del array
+    with pytest.raises(ValueError, match="expected"):
+        open_patches(tmp_path, "train", 3, 4)
+    with PatchWriter(tmp_path, "val", 4) as writer, pytest.raises(ValueError, match="uint8"):
+        writer.add(np.zeros((5, 5, 3), dtype=np.uint8), PatchMeta("x", 0, 0, "g", "s", "m"))
+
+
+def test_memmap_dataset_pickles_without_the_array(tmp_path: Path) -> None:
+    root = write_synthetic_dataset(tmp_path, (4, 4, 4), seed=3)
+    ds = MemmapPatchDataset(root, "train", _identity)
+    x, y, _ = ds[1]
+    assert x.shape == (3, 224, 224)
+    assert float(y) == float(ds.index.at[1, "label"])
+    clone = pickle.loads(pickle.dumps(ds))  # noqa: S301 - our own object
+    assert clone._array is None
+    assert torch.equal(clone[1][0], x)
 
 
 def test_normalize_uses_imagenet_statistics() -> None:
@@ -56,12 +94,14 @@ def test_aggregation_is_mean_of_patch_probabilities() -> None:
             "image_id": ["a", "a", "b"],
             "patch_index": [0, 1, 0],
             "label": [1, 1, 0],
+            "group_id": ["g1", "g1", "g2"],
             "oscc_probability": [0.2, 0.8, 0.1],
         }
     )
     images = aggregate_to_images(patches).set_index("image_id")
     assert images.loc["a", "oscc_probability"] == pytest.approx(0.5)
     assert images.loc["a", "n_patches"] == 2
+    assert images.loc["a", "group_id"] == "g1"
     assert images.loc["b", "oscc_probability"] == pytest.approx(0.1)
 
 
@@ -82,8 +122,7 @@ def test_binary_metrics_known_values() -> None:
     assert m["precision"] == pytest.approx(1.0)
     assert m["recall"] == pytest.approx(2 / 3)
     assert m["f1"] == pytest.approx(0.8)
-    # AUC: 6 positive/negative pairs; only (0.3, 0.4) is mis-ordered -> 5/6
-    assert m["auc_roc"] == pytest.approx(5 / 6)
+    assert m["auc_roc"] == pytest.approx(5 / 6)  # one mis-ordered pair out of six
 
 
 def test_auc_is_none_for_single_class() -> None:
@@ -91,10 +130,9 @@ def test_auc_is_none_for_single_class() -> None:
 
 
 def test_pos_weight_is_negative_over_positive() -> None:
-    records = make_split("train", 8, seed=1)[:6]  # labels 0,1,0,1,0,1
-    assert pos_weight_from(records) == pytest.approx(1.0)
+    assert pos_weight_from([0, 0, 0, 1]) == pytest.approx(3.0)
     with pytest.raises(ValueError, match="both classes"):
-        pos_weight_from([r for r in records if r.label == 1])
+        pos_weight_from([1, 1])
 
 
 def test_lr_schedule_warms_up_then_decays_to_zero() -> None:
@@ -126,22 +164,16 @@ def test_worker_init_fn_seeds_python_and_numpy_from_torch() -> None:
     assert first == (random.random(), float(np.random.rand()))  # noqa: NPY002
 
 
-def test_generator_is_seeded() -> None:
+def test_generators_are_seeded_and_differ_per_epoch() -> None:
     assert torch.equal(
         torch.randperm(10, generator=make_generator(5)),
         torch.randperm(10, generator=make_generator(5)),
     )
-
-
-def test_factory_builds_single_logit_resnet50() -> None:
-    torch.manual_seed(0)
-    model = build_model("resnet50", pretrained=False).eval()
-    with torch.no_grad():
-        out = model(torch.zeros(2, 3, 224, 224))
-    assert out.shape == (2, 1)
-    assert parameter_count(model) > 20_000_000
-
-
-def test_factory_rejects_unknown_architecture() -> None:
-    with pytest.raises(ValueError, match="unknown architecture"):
-        build_model("alexnet", pretrained=False)
+    assert torch.equal(
+        torch.randperm(50, generator=epoch_generator(42, 3)),
+        torch.randperm(50, generator=epoch_generator(42, 3)),
+    )
+    assert not torch.equal(
+        torch.randperm(50, generator=epoch_generator(42, 3)),
+        torch.randperm(50, generator=epoch_generator(42, 4)),
+    )

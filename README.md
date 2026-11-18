@@ -89,6 +89,9 @@ The example values are for development only. Never commit `.env`.
 | Research package install (CPU torch) | `cd ml_research && uv venv && bash scripts/install_pinned.sh --torch cpu --extra train --dev` (activate `.venv` afterwards) |
 | Research package install (lab GPU / Colab / Kaggle) | `--torch locked` on the lab GPU; `--torch platform` on Colab/Kaggle, via `ml_research/notebooks/oscc_ml_runner.ipynb` |
 | CPU smoke training (R0) | `oscc-ml train --model resnet50 --smoke` |
+| University GPU setup / check | `ml_research/scripts/uni_setup.{ps1,sh}` then `uni_check.{ps1,sh}` |
+| Training pipeline (R2) | `oscc-ml sweep` → `oscc-ml train-all --resume` → `oscc-ml evaluate` → `oscc-ml report` → `oscc-ml pack-results` |
+| Bring results home | `oscc-ml import-results results_small.zip` then `oscc-ml report` |
 | Research tests | `cd ml_research && pytest` |
 | Frontend dev server | `cd frontend && npm run dev` |
 | Frontend checks | `cd frontend && npm run lint && npm run typecheck && npm test && npm run build` |
