@@ -222,10 +222,45 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: powershell -ExecutionPolicy Bypass -File ml_research/scripts/uni_check.ps1 -AllowCpu -SkipDownload -MinFreeGb 1 -BudgetSeconds 20 -BatchSize 2
-      - name: Show uni_check.log
+      - name: uni_run.sh on a synthetic Kaggle-like zip, twice (second run must skip)
+        if: runner.os == 'Linux'
+        run: |
+          ml_research/.venv/bin/oscc-ml make-test-zip --out "$RUNNER_TEMP/test.zip" --per-class 24 --augmented 1 --size 300x260
+          ARGS=(--foreground --data-root ml_research/data/processed/synthetic-ci --dataset-version synthetic-ci
+                --device cpu --random-init --sweep-epochs 1 --epochs 1 --bootstrap 50 --latency-warmup 1 --latency-runs 2)
+          bash ml_research/scripts/uni_run.sh "$RUNNER_TEMP/test.zip" "${ARGS[@]}" && exit 1 || true  # report must refuse
+          LOG=ml_research/runs/uni_run.log
+          for line in "prepare +DONE" "sweep +DONE" "train-all +DONE" "evaluate +DONE" "report +FAILED" "pack-results +DONE"; do
+            grep -Eq "$line" "$LOG" || { echo "missing in summary: $line"; exit 1; }
+          done
+          grep -q "synthetic" "$LOG"
+          bash ml_research/scripts/uni_run.sh "$RUNNER_TEMP/test.zip" "${ARGS[@]}" || true
+          grep -Eq "prepare +SKIPPED" "$LOG" && grep -Eq "sweep +SKIPPED" "$LOG"
+      - name: uni_run.ps1 on a synthetic Kaggle-like zip, twice (second run must skip)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP "test.zip"
+          & ml_research\.venv\Scripts\oscc-ml.exe make-test-zip --out $zip --per-class 24 --augmented 1 --size 300x260
+          $extra = @("--data-root", "ml_research/data/processed/synthetic-ci", "--dataset-version", "synthetic-ci",
+                     "--device", "cpu", "--random-init", "--sweep-epochs", "1", "--epochs", "1",
+                     "--bootstrap", "50", "--latency-warmup", "1", "--latency-runs", "2")
+          & .\ml_research\scripts\uni_run.ps1 -Raw $zip -Foreground -ExtraArgs $extra
+          if ($LASTEXITCODE -eq 0) { Write-Host "report should have been refused"; exit 1 }
+          $log = "ml_research\runs\uni_run.log"
+          foreach ($line in @("prepare +DONE", "sweep +DONE", "train-all +DONE", "evaluate +DONE", "report +FAILED", "pack-results +DONE")) {
+            if (-not (Select-String -Path $log -Pattern $line -Quiet)) { Write-Host "missing in summary: $line"; exit 1 }
+          }
+          & .\ml_research\scripts\uni_run.ps1 -Raw $zip -Foreground -ExtraArgs $extra
+          if (-not (Select-String -Path $log -Pattern "prepare +SKIPPED" -Quiet)) { Write-Host "prepare was not skipped"; exit 1 }
+          if (-not (Select-String -Path $log -Pattern "sweep +SKIPPED" -Quiet)) { Write-Host "sweep was not skipped"; exit 1 }
+          exit 0
+      - name: Show uni_check.log and uni_run.log
         if: always()
         shell: bash
-        run: cat ml_research/runs/uni_check.log || true
+        run: |
+          cat ml_research/runs/uni_check.log || true
+          tail -n 60 ml_research/runs/uni_run.log || true
 
   secrets:
     name: Secret scan (gitleaks)

@@ -34,6 +34,7 @@ class Tiling(_Strict):
     patch_size: int = Field(gt=0)
     min_tissue_fraction: float = Field(ge=0, le=1)
     max_patches_per_image: int = Field(gt=0)
+    max_tissue_threshold: int = Field(ge=0, le=255)  # ADR-0002 (O5 amendment)
 
 
 class DataSettings(_Strict):

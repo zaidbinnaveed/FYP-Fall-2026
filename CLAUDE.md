@@ -126,6 +126,11 @@ cd ml_research && uv venv && bash scripts/install_pinned.sh --torch cpu --extra 
 # University GPU machine (Windows: .ps1 via `powershell -ExecutionPolicy Bypass -File ...`; Linux: .sh):
 ml_research/scripts/uni_setup.{ps1,sh}                                     # uv venv, CUDA torch matching nvidia-smi, oscc_ml (no admin)
 ml_research/scripts/uni_check.{ps1,sh}                                     # Python, GPU/VRAM, disk, write access, weights, 2-min GPU smoke
+ml_research/scripts/uni_run.{ps1,sh} <zip>                                 # background, resumable: prepare -> sweep -> train-all -> evaluate -> report -> pack (docs/UNI_RUNBOOK.md)
+oscc-ml prepare --raw <zip or folder>                                      # manifest (SHA-256 + pHash), dedup, grouped 70:15:15 split, leakage test, 224 px patches
+oscc-ml make-sample --raw <zip or folder> --per-class 30                   # small local sample in data/sample/ (reads only those files)
+oscc-ml check-leakage                                                      # re-run the leakage test on a prepared dataset
+oscc-ml make-test-zip --out <zip>                                          # synthetic Kaggle-like archive for CI and dry runs
 oscc-ml train --model resnet50 --smoke                                     # CPU smoke training (synthetic, not reportable)
 oscc-ml sweep                                                              # shared LR sweep -> runs/sweep/chosen_lr.json (resumable)
 oscc-ml train-all --resume                                                 # 4 models x seed 42 with the chosen LR (resumable)

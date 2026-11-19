@@ -18,3 +18,7 @@ updates:
     directories: [/api, /inference, /frontend]
     schedule:
       interval: monthly
+    ignore:
+      # The project is pinned to Python 3.11 (CLAUDE.md §5): only 3.11.x patch updates are proposed.
+      - dependency-name: python
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]

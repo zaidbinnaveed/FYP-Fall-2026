@@ -15,11 +15,12 @@ data:
     mean: [0.485, 0.456, 0.406] # SDS: ImageNet mean
     std: [0.229, 0.224, 0.225] # SDS: ImageNet std
   stain_normalization: none # SDS: optional; decided by the R3 ablation (O4)
-  tiling: # O5 (accepted default); implemented in Phase R1
+  tiling: # O5 (accepted default) + O5 amendment (ADR-0002): capped tissue threshold
     resize_if_both_sides_below: 448
     patch_size: 224
     min_tissue_fraction: 0.5
     max_patches_per_image: 64
+    max_tissue_threshold: 40 # ADR-0002: tissue = saturation > min(Otsu, 40); 255 = plain Otsu
   num_workers: 4
 
 augmentation: # SDS: training split only
