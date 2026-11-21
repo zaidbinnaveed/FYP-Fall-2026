@@ -88,8 +88,12 @@ def run_calibration(folders: list[Path], out: Path = DEFAULT_PROFILE) -> HEProfi
 
 
 def skimage_samples() -> Iterator[tuple[str, NDArray[np.uint8]]]:
-    """Image files shipped inside scikit-image's ``data`` package folder (no download)."""
-    import skimage.data
+    """Image files shipped inside scikit-image's ``data`` package folder (no download). Yields
+    nothing when scikit-image is not installed; the report then marks the category unavailable."""
+    try:
+        import skimage.data
+    except ImportError:
+        return
 
     folder = Path(skimage.data.__file__).parent
     for path in sorted(folder.iterdir()):
@@ -288,6 +292,8 @@ def to_markdown(result: Evaluation, profile: HEProfile) -> str:
     rows = [
         f"| {cat} | {v['n']} | {v['accepted']} | {100 * v['accepted'] / v['n']:.1f}% |"
         if v["n"]
+        else f"| {cat} | 0 | 0 | not available (scikit-image not installed here) |"
+        if cat == "scikit-image samples"
         else f"| {cat} | 0 | 0 | n/a |"
         for cat, v in result.far.items()
     ]

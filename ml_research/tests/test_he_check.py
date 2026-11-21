@@ -170,3 +170,21 @@ def test_cli_evaluate_without_profile_is_refused(tmp_path: Path) -> None:
     )
     assert result.exit_code == 2
     assert "he-calibrate" in result.output
+
+
+def test_missing_scikit_image_marks_the_category_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import builtins
+
+    from oscc_ml.he_eval import skimage_samples
+
+    real_import = builtins.__import__
+
+    def fake_import(name: str, *args: object, **kwargs: object) -> object:
+        if name.startswith("skimage"):
+            raise ImportError(name)
+        return real_import(name, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    assert list(skimage_samples()) == []

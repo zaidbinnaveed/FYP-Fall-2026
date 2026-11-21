@@ -36,8 +36,8 @@
   },
   "n_calibration_images": 60,
   "calibration_images": [
-    "data\\sample"
+    "data/sample"
   ],
-  "created_at": "2026-11-21T16:12:18Z",
+  "created_at": "2026-11-21T16:52:26Z",
   "note": "calibrated on the images listed above (aug_ copies skipped)"
 }
