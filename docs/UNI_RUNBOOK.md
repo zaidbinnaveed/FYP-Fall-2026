@@ -178,6 +178,7 @@ tail -f ml_research/runs/uni_run.log               # watch progress (Ctrl+C stop
   - Reads the zip or folder one image at a time and computes SHA-256 and pHash.
   - Excludes the publisher's `aug_*` copies by name.
   - Removes duplicate and near-duplicate originals (pHash, SHA-256).
+  - Excludes every duplicate cluster whose images carry both labels (ADR-0003). The release has 14 such Normal/OSCC pairs; the log line `... carry both labels ...` is expected, and the run goes on.
   - Makes a grouped, stratified 70:15:15 split with seed 42 and runs the leakage test.
   - Writes 224×224 patches with the O5 rule and the ADR-0002 tissue cap.
   - Prints a count table per class, split and magnification. Keep it for the dataset audit.
