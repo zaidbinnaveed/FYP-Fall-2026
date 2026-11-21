@@ -182,6 +182,10 @@ def test_pack_and_import_roundtrip(pipeline: Path, tmp_path: Path) -> None:
     assert any(n.endswith("evaluation.json") for n in names)
     assert any(n.endswith("predictions/test_images.csv") for n in names)
     assert "sweep/chosen_lr.json" in names
+    # the prepared dataset's metadata travels with the results (for `oscc-ml audit` at home) ...
+    assert any(n.startswith("dataset/") and n.endswith("/dataset.json") for n in names)
+    # ... but never its patches
+    assert not any(n.endswith(".u8") or "/patches_" in n for n in names)
     with zipfile.ZipFile(ckpt) as archive:
         ck_names = [n for n in archive.namelist() if n != MANIFEST]
     assert len(ck_names) == 4

@@ -4,7 +4,9 @@
 
 * ``results_small.zip``: everything needed to rebuild the report at home (configs, run info,
   environment, logs, metrics, evaluation, predictions, sweep summary, report, uni_run.log);
-  no checkpoints. Small enough for email or a USB stick.
+  no checkpoints. Small enough for email or a USB stick. It also carries the prepared dataset's
+  metadata (``dataset.json``, ``manifest.csv``, ``summary.csv``, ``images.csv``; never patches)
+  under ``dataset/<dataset_version>/``, so ``oscc-ml audit`` works at home after import.
 * ``checkpoints.zip``: ``checkpoints/best.pt`` of every training run (needed later to register
   models, Phase R5). ``last.pt`` resume files are not exported.
 
@@ -75,6 +77,46 @@ def small_files(runs_dir: Path) -> list[Path]:
     return files
 
 
+DATASET_DIR_NAME = "dataset"
+DATASET_FILES = ("dataset.json", "manifest.csv", "summary.csv", "images.csv")
+
+
+def _candidate_roots(value: str, runs_dir: Path) -> list[Path]:
+    path = Path(value)
+    if path.is_absolute():
+        return [path]
+    # relative paths are relative to where the run was started (repo root or ml_research/)
+    return [Path.cwd() / path, runs_dir.parent / path, runs_dir.parent.parent / path]
+
+
+def dataset_roots(runs_dir: Path) -> list[Path]:
+    """Prepared-dataset folders used by the (non-smoke) runs in ``runs_dir``, from run_info.json."""
+    roots: list[Path] = []
+    for run_dir in _run_dirs(runs_dir) + _run_dirs(runs_dir / SWEEP_DIR_NAME):
+        value = read_json(run_dir / "run_info.json").get("data_root")
+        if not isinstance(value, str):
+            continue
+        for candidate in _candidate_roots(value, runs_dir):
+            if (candidate / "dataset.json").is_file():
+                resolved = candidate.resolve()
+                if resolved not in roots:
+                    roots.append(resolved)
+                break
+    return roots
+
+
+def dataset_entries(roots: list[Path]) -> list[tuple[Path, str]]:
+    """(file, archive name) for the metadata of each prepared dataset; patches are never packed."""
+    entries: list[tuple[Path, str]] = []
+    for root in roots:
+        version = str(read_json(root / "dataset.json").get("dataset_version", root.name))
+        for name in DATASET_FILES:
+            path = root / name
+            if path.is_file():
+                entries.append((path, f"{DATASET_DIR_NAME}/{version}/{name}"))
+    return entries
+
+
 def checkpoint_files(runs_dir: Path) -> list[Path]:
     files = []
     for run_dir in _run_dirs(runs_dir):
@@ -85,14 +127,21 @@ def checkpoint_files(runs_dir: Path) -> list[Path]:
     return files
 
 
-def _write_zip(target: Path, runs_dir: Path, files: list[Path], kind: str, stored: bool) -> Path:
+def _write_zip(
+    target: Path,
+    runs_dir: Path,
+    files: list[Path],
+    kind: str,
+    stored: bool,
+    extra: list[tuple[Path, str]] | None = None,
+) -> Path:
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_suffix(".zip.tmp")
     entries: list[dict[str, Any]] = []
     compression = zipfile.ZIP_STORED if stored else zipfile.ZIP_DEFLATED
+    named = [(path, path.relative_to(runs_dir).as_posix()) for path in files] + (extra or [])
     with zipfile.ZipFile(tmp, "w", compression=compression, allowZip64=True) as archive:
-        for path in files:
-            arcname = path.relative_to(runs_dir).as_posix()
+        for path, arcname in named:
             archive.write(path, arcname)
             entries.append(
                 {"path": arcname, "size": path.stat().st_size, "sha256": sha256_of(path)}
@@ -108,13 +157,25 @@ def _write_zip(target: Path, runs_dir: Path, files: list[Path], kind: str, store
     return target
 
 
-def pack_results(runs_dir: Path, out_dir: Path | None = None) -> dict[str, Path]:
+def pack_results(
+    runs_dir: Path, out_dir: Path | None = None, data_roots: list[Path] | None = None
+) -> dict[str, Path]:
+    """``data_roots``: prepared datasets whose metadata to include (default: found through the
+    runs' run_info.json; a dataset that cannot be found is simply not included)."""
     out_dir = out_dir or runs_dir / EXPORT_DIR_NAME
     small = small_files(runs_dir)
     if not small:
         raise FileNotFoundError(f"no non-smoke run folders found in {runs_dir}")
+    roots = dataset_roots(runs_dir) if data_roots is None else data_roots
     return {
-        "results_small": _write_zip(out_dir / SMALL_ZIP, runs_dir, small, "results_small", False),
+        "results_small": _write_zip(
+            out_dir / SMALL_ZIP,
+            runs_dir,
+            small,
+            "results_small",
+            False,
+            extra=dataset_entries(roots),
+        ),
         "checkpoints": _write_zip(
             out_dir / CHECKPOINTS_ZIP, runs_dir, checkpoint_files(runs_dir), "checkpoints", True
         ),

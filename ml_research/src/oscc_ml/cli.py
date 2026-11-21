@@ -278,12 +278,21 @@ def report_command(
 def pack_results_command(
     runs_dir: RunsDir = RUNS_DIR,
     out_dir: Annotated[Path | None, typer.Option(help="Default: runs/export/")] = None,
+    data_root: Annotated[
+        Path | None,
+        typer.Option(
+            help="Prepared dataset whose metadata (dataset.json, manifest, summaries; no patches) "
+            "goes into results_small.zip. Default: found through the runs' run_info.json"
+        ),
+    ] = None,
 ) -> None:
     """results_small.zip (no checkpoints) and checkpoints.zip, each with a SHA-256 manifest."""
     from oscc_ml.results import pack_results
 
+    if data_root is not None and not (data_root / "dataset.json").is_file():
+        raise _fail(f"{data_root} has no dataset.json")
     try:
-        paths = pack_results(runs_dir, out_dir)
+        paths = pack_results(runs_dir, out_dir, None if data_root is None else [data_root])
     except FileNotFoundError as exc:
         raise _fail(str(exc)) from exc
     for kind, path in paths.items():
@@ -433,6 +442,97 @@ def check_leakage_command(data_root: DataRoot = DEFAULT_DATA_ROOT) -> None:
     except LeakageError as exc:
         raise _fail(str(exc), code=1) from exc
     typer.echo(f"leakage test passed for {len(kept)} images in {data_root}")
+
+
+@app.command("audit")
+def audit_command(
+    prepared: Annotated[
+        Path,
+        typer.Option(
+            help="Prepared dataset folder, or runs/dataset/<dataset_version>/ after import-results"
+        ),
+    ],
+    out: Annotated[
+        Path | None, typer.Option(help="Markdown file (default: docs/results/dataset_audit.md)")
+    ] = None,
+) -> None:
+    """Dataset audit report from manifest.csv and dataset.json only (plan R1 step 3)."""
+    from oscc_ml.audit import DEFAULT_AUDIT_PATH, AuditError, build_audit, classify, load
+
+    try:
+        info, _ = load(prepared)
+        if classify(info) == "synthetic" and out is None:
+            raise _fail("synthetic data: pass --out explicitly (never written to docs/results/)")
+        markdown, kind = build_audit(prepared)
+    except AuditError as exc:
+        raise _fail(str(exc)) from exc
+    target = out or DEFAULT_AUDIT_PATH
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(markdown, "utf-8")
+    typer.echo(f"audit ({kind}): {target}")
+
+
+@app.command("he-calibrate")
+def he_calibrate_command(
+    images: Annotated[
+        list[Path], typer.Option(help="Folder(s) of H&E originals (recursive; aug_ skipped)")
+    ],
+    out: Annotated[
+        Path | None, typer.Option(help="Profile file (default: configs/he_profile.json)")
+    ] = None,
+) -> None:
+    """FR-2.2: H&E colour-profile ranges from H&E images -> configs/he_profile.json."""
+    from oscc_ml.he_eval import DEFAULT_PROFILE, run_calibration
+
+    target = out or DEFAULT_PROFILE
+    try:
+        profile = run_calibration(images, target)
+    except (FileNotFoundError, ValueError) as exc:
+        raise _fail(str(exc)) from exc
+    typer.echo(
+        f"H&E profile {profile.version} from "
+        f"{profile.metadata['n_calibration_images']} images: {target}"
+    )
+
+
+@app.command("he-evaluate")
+def he_evaluate_command(
+    images: Annotated[
+        list[Path], typer.Option(help="Folder(s) of H&E images to measure false rejects on")
+    ],
+    profile_path: Annotated[
+        Path | None,
+        typer.Option("--profile", help="Profile (default: configs/he_profile.json)"),
+    ] = None,
+    out: Annotated[
+        Path | None,
+        typer.Option(help="Markdown report (default: runs/he_check/he_evaluation.md; + .json)"),
+    ] = None,
+    folds: Annotated[int, typer.Option(help="Folds for the cross-validated false-reject rate")] = 5,
+) -> None:
+    """FR-2.2: false-reject rate on H&E images; false-accept rate on offline non-histology."""
+    from oscc_ml.he_eval import DEFAULT_PROFILE, evaluate, to_json, to_markdown
+    from oscc_ml.preprocess.he_check import HEProfile
+
+    source = profile_path or DEFAULT_PROFILE
+    if not source.is_file():
+        raise _fail(f"{source} not found; run `oscc-ml he-calibrate` first")
+    try:
+        profile = HEProfile.load(source)
+        result = evaluate(images, profile, folds=folds)
+    except (FileNotFoundError, ValueError) as exc:
+        raise _fail(str(exc)) from exc
+    target = out or RUNS_DIR / "he_check" / "he_evaluation.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(to_markdown(result, profile), "utf-8")
+    target.with_suffix(".json").write_text(to_json(result), "utf-8")
+    accepted, total = result.far_overall()
+    typer.echo(
+        f"false-reject (H&E, n={result.n_he}): in-sample {100 * result.frr_in_sample:.1f}%, "
+        f"{result.folds}-fold CV {100 * result.frr_cv:.1f}%"
+    )
+    typer.echo(f"false-accept (non-histology, n={total}): {100 * accepted / total:.1f}%")
+    typer.echo(f"report: {target}")
 
 
 @app.command("make-sample")
