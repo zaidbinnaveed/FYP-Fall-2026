@@ -1,0 +1,160 @@
+"""Regression lock on ``oscc-ml prepare`` (Phase C must not change the dataset pipeline).
+
+The expected hashes were recorded with the ``main`` code at commit 0b45abe (Phase B merged,
+before any Phase C change). If any of these tests fail, the manifest, the split, the tiling or
+the patch bytes have changed: do not update the hashes without a new PREPROCESS_VERSION and an ADR.
+
+* ``test_synthetic_bmp_dataset_is_unchanged`` runs everywhere (CI included). Its input is a small
+  uncompressed BMP folder generated from a fixed seed: BMP bytes are the same on every platform,
+  unlike JPEG or zlib-compressed PNG output, so the SHA-256-derived image ids are stable.
+
+ADR-0003 (label-conflict exclusion) adds three keys to dataset.json; they are excluded from the
+hash and checked to be zero, because neither input contains a conflicting pair.
+
+* ``test_local_sample_is_unchanged`` runs on the team laptop where the real-image sample
+  ``data/sample/`` exists (``oscc-ml make-sample``); it is skipped elsewhere (the data are
+  gitignored). It must be identical to the recorded sample fingerprint.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from pathlib import Path
+
+import numpy as np
+import pytest
+from PIL import Image
+
+from oscc_ml.data.prepare import PrepareSettings, prepare, protocol_tiling
+from oscc_ml.data.synthetic import synthetic_patch
+from oscc_ml.paths import SAMPLE_DIR
+from oscc_ml.preprocess import PREPROCESS_VERSION
+
+VOLATILE_KEYS = {"created_at", "seconds"}
+# Keys ADR-0003 added to dataset.json (label-conflict exclusion). They are stripped before hashing
+# so that every key that existed at 0b45abe must still be byte-identical, and they are checked
+# separately (no conflicts in these inputs).
+ADR_0003_KEYS = {"n_label_conflict_clusters", "n_label_conflict_images_excluded", "label_conflicts"}
+
+
+def prepared_fingerprint(root: Path) -> dict[str, str]:
+    """SHA-256 of every file of a prepared dataset. CSV line endings are normalized (pandas writes
+    the OS line separator); ``dataset.json`` is hashed without its timestamp and duration."""
+    out: dict[str, str] = {}
+    for path in sorted(root.iterdir()):
+        data = path.read_bytes()
+        if path.name == "dataset.json":
+            info = {
+                k: v for k, v in json.loads(data).items() if k not in VOLATILE_KEYS | ADR_0003_KEYS
+            }
+            data = json.dumps(info, sort_keys=True).encode()
+        elif path.suffix == ".csv":
+            data = data.replace(b"\r\n", b"\n")
+        out[path.name] = hashlib.sha256(data).hexdigest()
+    return out
+
+
+def _tissue_on_glass(rng: np.random.Generator, label: int, width: int, height: int) -> Image.Image:
+    tile = 224
+    rows, cols = -(-height // tile), -(-width // tile)
+    texture = np.concatenate(
+        [
+            np.concatenate([synthetic_patch(rng, label, tile) for _ in range(cols)], axis=1)
+            for _ in range(rows)
+        ],
+        axis=0,
+    )[:height, :width]
+    field = rng.random((height // 100 + 2, width // 100 + 2))
+    mask = np.kron(field, np.ones((100, 100)))[:height, :width] > 0.4
+    canvas = np.full((height, width, 3), 245, dtype=np.uint8)
+    canvas[mask] = texture[mask]
+    return Image.fromarray(canvas)
+
+
+def write_bmp_dataset(root: Path, per_class: int = 20, seed: int = 7) -> Path:
+    """Kaggle-like folder (train/val/test x Normal/OSCC) of uncompressed BMPs, with two
+    publisher-style ``aug_`` copies per class and one re-saved original in test/ (a cross-split
+    duplicate)."""
+    rng = np.random.default_rng(seed)
+    for label, cls in ((0, "Normal"), (1, "OSCC")):
+        for i in range(per_class):
+            split = "train" if i % 10 < 7 else ("val" if i % 10 < 9 else "test")
+            mag = "100x" if i % 2 == 0 else "400x"
+            width, height = (600, 460) if i % 3 else (300, 260)  # grid tiling and resize
+            image = _tissue_on_glass(rng, label, width, height)
+            folder = root / split / cls
+            folder.mkdir(parents=True, exist_ok=True)
+            image.save(folder / f"{cls}_{mag}_{i + 1}.bmp")
+            if i == 0:
+                (root / "test" / cls).mkdir(parents=True, exist_ok=True)
+                image.save(root / "test" / cls / f"{cls}_{mag}_{900 + i}.bmp")
+            if i < 2:
+                aug = image.transpose(Image.Transpose.FLIP_LEFT_RIGHT).resize((224, 224))
+                aug.save(root / "train" / cls / f"aug_{i + 1}_{label}.bmp")
+    return root
+
+
+# Recorded at 0b45abe with the code on main (see the module docstring).
+EXPECTED_SYNTHETIC: dict[str, str] = {
+    "images.csv": "4be9cf37f5c475dc3f9b628c01cc178e1fd4f2b2ce27816fb375d76e7023cd53",
+    "manifest.csv": "7b3d919ad8bac8e89b18d41d242d2825d494988c284f905ca6331af2386eb2c8",
+    "patches_test.csv": "b24713e58cabbfa384d12834cb31f1a4380981928e86460497fe657cd424aa94",
+    "patches_test.u8": "1c73e58797028136c5c69a20e3a5d1eae83c934475c74eada2f866c9c69159f5",
+    "patches_train.csv": "ebec7a13b10c779c1a4fe7bc9b17fbe144c81f83f6d6014805f10f4f6e6f18d0",
+    "patches_train.u8": "2df380faa7cc04511c614839c8c7efce26262725201d194304b90178ed5cdcd7",
+    "patches_val.csv": "89b89a00c0289121c6c167f39639ac74457e433d676944fd3af405c9ab7e4a21",
+    "patches_val.u8": "8b0b179252e383d3376ef6e04ca6c00e0584642b06a044f0bbdf6acb2840bfdd",
+    "summary.csv": "932ed35e16fad629a898a7a72fae59a27d4f07d6844feaf6883a53732dd508de",
+}
+# data/sample/ as made on 2026-11-17 (SAMPLE.json listing; 70 files, 60 kept, 2,641 patches).
+EXPECTED_SAMPLE: dict[str, str] = {
+    "dataset.json": "1b78502d8f4b03f190f4c489d4bf76deaa1abd47ab465207dcebab7ab4964c7b",
+    "images.csv": "c4118c5d36d6810fee3ebf0d0b06adb4417cad241c771f29dad54d66c68c157d",
+    "manifest.csv": "f9b3eac7b39215ccdcbba7346a9697e721883c4c7449ab0ae8605ecf2ae14b34",
+    "patches_test.csv": "87fca4a977240c249c90eedcf2ad869fd5d6824cfd73dd932030d98682b53cc0",
+    "patches_test.u8": "af7bf6bfac2cbdf1a3ecd27098dcd549dcd6981eeceb639ca627c5568c5e7b56",
+    "patches_train.csv": "b15fcc2d16470c71be8e21475f7aebbc29df2086e85c28c9a5690b03aefafaf0",
+    "patches_train.u8": "3f8deeb6d70a1bc1d9995c71936c91b819160e2a8fa340fed4fda7d8f7c51f75",
+    "patches_val.csv": "b47be4226dc8451707008a331c48032225cc936fd772faab4578781faf368ea7",
+    "patches_val.u8": "014fbb0f1356ec3985e7f4b94c4f75d7c81d7a708b2686b6c20f236ffefba613",
+    "summary.csv": "4745fa8c3d86bc90d09c0a6fb5f87b58dd534537eb56f88e8910f144db109c85",
+}
+
+
+def _assert_no_conflicts(root: Path) -> None:
+    info = json.loads((root / "dataset.json").read_text("utf-8"))
+    assert info["n_label_conflict_clusters"] == {"byte_identical": 0, "near_duplicate": 0}
+    assert info["n_label_conflict_images_excluded"] == 0
+    assert info["label_conflicts"] == []
+
+
+def test_preprocess_version_is_unchanged() -> None:
+    assert PREPROCESS_VERSION == "pp-0.3.0"
+
+
+def test_synthetic_bmp_dataset_is_unchanged(tmp_path: Path) -> None:
+    raw = write_bmp_dataset(tmp_path / "raw")
+    out = prepare(
+        raw,
+        tmp_path / "prepared",
+        PrepareSettings(dataset_version="synthetic-regression", tiling=protocol_tiling()),
+    )
+    _assert_no_conflicts(out)
+    fingerprint = prepared_fingerprint(out)
+    fingerprint.pop("dataset.json")  # records tmp folder name; manifest + patches carry the data
+    assert fingerprint == EXPECTED_SYNTHETIC
+
+
+@pytest.mark.skipif(
+    not (SAMPLE_DIR / "SAMPLE.json").is_file(),
+    reason="local real-image sample (data/sample/) not present",
+)
+def test_local_sample_is_unchanged(tmp_path: Path) -> None:
+    out = prepare(
+        SAMPLE_DIR,
+        tmp_path / "sample",
+        PrepareSettings(dataset_version="sample-golden", tiling=protocol_tiling()),
+    )
+    _assert_no_conflicts(out)
+    assert prepared_fingerprint(out) == EXPECTED_SAMPLE
