@@ -4,9 +4,10 @@ The expected hashes were recorded with the ``main`` code at commit 0b45abe (Phas
 before any Phase C change). If any of these tests fail, the manifest, the split, the tiling or
 the patch bytes have changed: do not update the hashes without a new PREPROCESS_VERSION and an ADR.
 
-* ``test_synthetic_png_dataset_is_unchanged`` runs everywhere (CI included). Its input is a small
-  lossless PNG folder generated from a fixed seed, so no JPEG encoder differences between
-  platforms can change it.
+* ``test_synthetic_bmp_dataset_is_unchanged`` runs everywhere (CI included). Its input is a small
+  uncompressed BMP folder generated from a fixed seed: BMP bytes are the same on every platform,
+  unlike JPEG or zlib-compressed PNG output, so the SHA-256-derived image ids are stable.
+
 ADR-0003 (label-conflict exclusion) adds three keys to dataset.json; they are excluded from the
 hash and checked to be zero, because neither input contains a conflicting pair.
 
@@ -71,9 +72,10 @@ def _tissue_on_glass(rng: np.random.Generator, label: int, width: int, height: i
     return Image.fromarray(canvas)
 
 
-def write_png_dataset(root: Path, per_class: int = 20, seed: int = 7) -> Path:
-    """Kaggle-like folder (train/val/test x Normal/OSCC) of lossless PNGs, with two publisher-style
-    ``aug_`` copies per class and one re-saved original in test/ (a cross-split duplicate)."""
+def write_bmp_dataset(root: Path, per_class: int = 20, seed: int = 7) -> Path:
+    """Kaggle-like folder (train/val/test x Normal/OSCC) of uncompressed BMPs, with two
+    publisher-style ``aug_`` copies per class and one re-saved original in test/ (a cross-split
+    duplicate)."""
     rng = np.random.default_rng(seed)
     for label, cls in ((0, "Normal"), (1, "OSCC")):
         for i in range(per_class):
@@ -83,26 +85,26 @@ def write_png_dataset(root: Path, per_class: int = 20, seed: int = 7) -> Path:
             image = _tissue_on_glass(rng, label, width, height)
             folder = root / split / cls
             folder.mkdir(parents=True, exist_ok=True)
-            image.save(folder / f"{cls}_{mag}_{i + 1}.png")
+            image.save(folder / f"{cls}_{mag}_{i + 1}.bmp")
             if i == 0:
                 (root / "test" / cls).mkdir(parents=True, exist_ok=True)
-                image.save(root / "test" / cls / f"{cls}_{mag}_{900 + i}.png")
+                image.save(root / "test" / cls / f"{cls}_{mag}_{900 + i}.bmp")
             if i < 2:
                 aug = image.transpose(Image.Transpose.FLIP_LEFT_RIGHT).resize((224, 224))
-                aug.save(root / "train" / cls / f"aug_{i + 1}_{label}.png")
+                aug.save(root / "train" / cls / f"aug_{i + 1}_{label}.bmp")
     return root
 
 
 # Recorded at 0b45abe with the code on main (see the module docstring).
 EXPECTED_SYNTHETIC: dict[str, str] = {
-    "images.csv": "f45d10119d68bfdf3099bb288f2460e61f3cdcb2911fac5791ac54951ecfbcd9",
-    "manifest.csv": "3fffadfe1114e9107df8268d0df3a2cd289ff44511f193b4fd9f7af0eaf3a236",
-    "patches_test.csv": "eeb5b9349c9f136b3117d31c7c2c6def4e1774bce1406d6519b53f2cca055d00",
-    "patches_test.u8": "c0d44d054aa2e6e72f559594b15418f6fa5a93ac33263d534614d700519ff02e",
-    "patches_train.csv": "8cf79dfd83f89942cc83372f2c56aaec62585dd6272cecae2ae2b3972059d4d9",
-    "patches_train.u8": "cda9343869272fdbe854cea09dea38d4160b8fbe4fcc67c66b9cbaaf35378e17",
-    "patches_val.csv": "af8a10dd75ab91b5b2009aa21d6a8f623c69c04b532751778fad10cfdcf15f4a",
-    "patches_val.u8": "5eb26aefda019bc346897728e20dcb4df1bd08d96d86789985575537abf4b90c",
+    "images.csv": "4be9cf37f5c475dc3f9b628c01cc178e1fd4f2b2ce27816fb375d76e7023cd53",
+    "manifest.csv": "7b3d919ad8bac8e89b18d41d242d2825d494988c284f905ca6331af2386eb2c8",
+    "patches_test.csv": "b24713e58cabbfa384d12834cb31f1a4380981928e86460497fe657cd424aa94",
+    "patches_test.u8": "1c73e58797028136c5c69a20e3a5d1eae83c934475c74eada2f866c9c69159f5",
+    "patches_train.csv": "ebec7a13b10c779c1a4fe7bc9b17fbe144c81f83f6d6014805f10f4f6e6f18d0",
+    "patches_train.u8": "2df380faa7cc04511c614839c8c7efce26262725201d194304b90178ed5cdcd7",
+    "patches_val.csv": "89b89a00c0289121c6c167f39639ac74457e433d676944fd3af405c9ab7e4a21",
+    "patches_val.u8": "8b0b179252e383d3376ef6e04ca6c00e0584642b06a044f0bbdf6acb2840bfdd",
     "summary.csv": "932ed35e16fad629a898a7a72fae59a27d4f07d6844feaf6883a53732dd508de",
 }
 # data/sample/ as made on 2026-11-17 (SAMPLE.json listing; 70 files, 60 kept, 2,641 patches).
@@ -131,8 +133,8 @@ def test_preprocess_version_is_unchanged() -> None:
     assert PREPROCESS_VERSION == "pp-0.3.0"
 
 
-def test_synthetic_png_dataset_is_unchanged(tmp_path: Path) -> None:
-    raw = write_png_dataset(tmp_path / "raw")
+def test_synthetic_bmp_dataset_is_unchanged(tmp_path: Path) -> None:
+    raw = write_bmp_dataset(tmp_path / "raw")
     out = prepare(
         raw,
         tmp_path / "prepared",
