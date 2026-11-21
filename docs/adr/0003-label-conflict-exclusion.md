@@ -58,5 +58,5 @@ The genuine near-duplicate conflicts sit in the same numbering block as the byte
 
 - The full run no longer aborts. 41 of 1,224 originals (3.3%) are excluded for label conflicts. Five of these come from the false-match cluster `dup-00052` and would be usable under a stricter pHash threshold. That is an open question for the team: `duplicate_threshold` is unchanged here.
 - The same edge effect exists in same-label deduplication. One of the 11 removals (`OSCC_100x_153` ↔ `OSCC_100x_108`) is a false match at distance 6. Leakage is not affected, because grouping at distance 10 still keeps similar images in one split.
-- The regression lock (`tests/test_prepare_regression.py`) proves that the development sample and a synthetic PNG set give byte-identical manifests and patches before and after this change. The three new `dataset.json` keys are checked separately.
+- The regression lock (`tests/test_prepare_regression.py`) proves that the development sample and a synthetic uncompressed BMP set give byte-identical manifests and patches before and after this change. The three new `dataset.json` keys are checked separately.
 - CI covers the case on every run: `make-test-zip --label-conflicts 2` adds one byte-identical pair and one near-duplicate pair, and the `uni_run` jobs on Ubuntu and Windows check that the run reports and excludes them.
