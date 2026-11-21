@@ -4,9 +4,13 @@ This runbook takes you from an empty university machine to baseline results on y
 - **No Claude Code is needed at the university.** Every step is a script that is already in the repository.
 - **The scripts work on Windows and Linux.** Each step shows both versions.
 - **Code:** `git clone` over HTTPS from the public GitHub repository. This is the only route for the code, and it needs no login. The machine clones `main`.
-- **Dataset (recommended route):** the Kaggle zip `archive.zip` (3.15 GB), copied from a USB stick into `ml_research\data\raw\kaggle_kebede\`. The scripts read the zip directly and nothing is unpacked. The extracted folder still works as a fallback (section 1).
+- **Dataset (recommended route): Google Drive.** Download `oscc_kaggle_kebede_v1.zip` (3,191,603,059 bytes) from the Drive folder `FYP-OSCC-data` into `ml_research\data\raw\kaggle_kebede\`. The scripts read the zip directly and nothing is unpacked.
+  - **SHA-256:** `f75d25682388c85469995e16c543ebe4f889cbe8d4c521df37e2bbd1be4a6c0d` (MD5 `2a1ae4331427793950e73d3414b82640`). Check the download against it before running anything (section 1).
+  - The zip holds the Kaggle dataset unchanged and uncompressed (`kaggle_kebede/{train,val,test}/{Normal,OSCC}`, 5,192 files).
+  - It was checked at home on 21 Nov 2026 with `prepare --manifest-only`. The result is identical to the extracted folder: 1,172 images kept, 41 label-conflict images excluded (ADR-0003), leakage test passed.
+  - Other routes (section 1): the original Kaggle `archive.zip` on a USB stick, or the extracted folder.
 - **Never store a password, token or key on the university machine.**
-  - The dataset arrives on a USB stick.
+  - Sign in to Google only in a browser **private/incognito window**, only to download the zip, and sign out afterwards. Never let the browser save the password.
   - Do not sign in to Kaggle or GitHub there.
 
 ---
@@ -25,6 +29,8 @@ kaggle_kebede/
 - Originals are named like `Normal_100x_12.jpg` / `OSCC_400x_7.jpg`, mostly 2048×1536 (some portrait 1536×2048, one 1435×916).
 - There are 1,224 originals in total (290 Normal, 934 OSCC), matching the Rahman release.
 - The `aug_*` files are the publisher's 224×224 augmented copies. Their names carry no magnification and no link to the original. `prepare` excludes them by name, and the manifest lists each one.
+
+**Route A (Google Drive) needs nothing more at home.** `oscc_kaggle_kebede_v1.zip` was uploaded to the Drive folder `FYP-OSCC-data` on 22 Nov 2026. rclone confirmed that the Drive copy has the same size (3,191,603,059 bytes), MD5 and SHA-256 as the local zip. The SHA-256 is `f75d25682388c85469995e16c543ebe4f889cbe8d4c521df37e2bbd1be4a6c0d`; it is also in section 1, so you can read it on GitHub at the university. Steps 1–3 below are only for route B (USB).
 
 1. **Check that `archive.zip` finished downloading.**
    - No `.crdownload` or `.partial` file is left.
@@ -59,7 +65,33 @@ git clone https://github.com/zaidbinnaveed/FYP-Fall-2026.git
 cd FYP-Fall-2026
 ```
 
-**Copy the dataset (recommended: the zip)** into the gitignored raw-data folder, then check that it copied correctly. Replace `E:` with your USB drive letter. The scripts only **read** `ml_research/data/raw/`; nothing there is ever moved, changed or deleted.
+**Dataset route A (recommended): Google Drive.**
+
+1. Open a **private/incognito** browser window, go to https://drive.google.com and sign in.
+2. Open the folder `FYP-OSCC-data` and download `oscc_kaggle_kebede_v1.zip`, about 3.2 GB. Google warns that it cannot scan a file this large for viruses; choose **Download anyway**.
+3. Move the file from Downloads into the raw-data folder and check it. **The SHA-256 must be exactly** `f75d25682388c85469995e16c543ebe4f889cbe8d4c521df37e2bbd1be4a6c0d`, and the size 3,191,603,059 bytes. If it differs, the download is incomplete or corrupt: delete it and download again.
+
+   ```powershell
+   # Windows
+   mkdir ml_research\data\raw\kaggle_kebede -Force
+   move $HOME\Downloads\oscc_kaggle_kebede_v1.zip ml_research\data\raw\kaggle_kebede\
+   Get-FileHash -Algorithm SHA256 ml_research\data\raw\kaggle_kebede\oscc_kaggle_kebede_v1.zip
+   (Get-Item ml_research\data\raw\kaggle_kebede\oscc_kaggle_kebede_v1.zip).Length
+   ```
+
+   ```bash
+   # Linux
+   mkdir -p ml_research/data/raw/kaggle_kebede
+   mv ~/Downloads/oscc_kaggle_kebede_v1.zip ml_research/data/raw/kaggle_kebede/
+   sha256sum ml_research/data/raw/kaggle_kebede/oscc_kaggle_kebede_v1.zip
+   stat -c %s ml_research/data/raw/kaggle_kebede/oscc_kaggle_kebede_v1.zip
+   ```
+
+4. **Sign out of Google now**: account picture → Sign out. Then close the private window. Nothing else needs Google.
+
+With route A, `<dataset>` below is `ml_research/data/raw/kaggle_kebede/oscc_kaggle_kebede_v1.zip`.
+
+**Dataset route B: `archive.zip` on a USB stick.** Copy it into the gitignored raw-data folder, then check that it copied correctly. Replace `E:` with your USB drive letter. The scripts only **read** `ml_research/data/raw/`; nothing there is ever moved, changed or deleted.
 
 ```powershell
 # Windows
@@ -89,7 +121,12 @@ mkdir -p ml_research/data/raw && cp -r /media/<you>/<usb>/kaggle_kebede ml_resea
 find ml_research/data/raw/kaggle_kebede -type f | wc -l          # must be 5192
 ```
 
-In the commands below, `<dataset>` is `ml_research/data/raw/kaggle_kebede/archive.zip` (recommended). With the folder fallback, it is `ml_research/data/raw/kaggle_kebede`.
+In the commands below, `<dataset>` is:
+- route A (Google Drive, recommended): `ml_research/data/raw/kaggle_kebede/oscc_kaggle_kebede_v1.zip`;
+- route B (USB): `ml_research/data/raw/kaggle_kebede/archive.zip`;
+- the folder fallback: `ml_research/data/raw/kaggle_kebede`.
+
+Put only **one** of these in `kaggle_kebede\`.
 
 ## 2. One-time setup (no admin rights)
 
@@ -157,19 +194,19 @@ rm -rf ml_research/data/dryrun
 
 ## 5. The real run
 
-`uni_run` runs `prepare → sweep → train-all → evaluate → report → pack-results` in the background. It takes `<dataset>` from section 1; the examples use the zip.
+`uni_run` runs `prepare → sweep → train-all → evaluate → report → pack-results` in the background. It takes `<dataset>` from section 1; the examples use the Google Drive zip (route A). For route B, replace `oscc_kaggle_kebede_v1.zip` with `archive.zip`.
 
 The tissue filter is the capped rule from ADR-0002 (`max_tissue_threshold: 40` in `protocol.yaml`). It is the default, so no extra option is needed.
 
 ```powershell
 # Windows: opens a separate minimized window
-powershell -ExecutionPolicy Bypass -File ml_research\scripts\uni_run.ps1 -Raw ml_research\data\raw\kaggle_kebede\archive.zip
+powershell -ExecutionPolicy Bypass -File ml_research\scripts\uni_run.ps1 -Raw ml_research\data\raw\kaggle_kebede\oscc_kaggle_kebede_v1.zip
 Get-Content -Wait ml_research\runs\uni_run.log      # watch progress (Ctrl+C stops watching, not the run)
 ```
 
 ```bash
 # Linux: uses tmux if installed, otherwise nohup (survives logging out)
-bash ml_research/scripts/uni_run.sh ml_research/data/raw/kaggle_kebede/archive.zip
+bash ml_research/scripts/uni_run.sh ml_research/data/raw/kaggle_kebede/oscc_kaggle_kebede_v1.zip
 tail -f ml_research/runs/uni_run.log               # watch progress (Ctrl+C stops watching, not the run)
 ```
 
