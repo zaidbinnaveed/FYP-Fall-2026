@@ -50,15 +50,64 @@ from oscc_ml.data.sources import (
 )
 from oscc_ml.data.split import check_leakage, grouped_split
 from oscc_ml.preprocess import PREPROCESS_VERSION, TilingParams, load_rgb, tile_image
-from oscc_ml.utils.io import iso, read_json, utc_now
+from oscc_ml.utils.io import iso, read_json, utc_now, write_json
 
 logger = logging.getLogger("oscc_ml.data")
 TARGET_FRACTIONS = {"train": 0.70, "val": 0.15, "test": 0.15}
 MAX_FRACTION_DEVIATION = 0.10
 
 
+LABEL_CONFLICT = "label_conflict"
+MANIFEST_ONLY_INFO = "manifest_only.json"
+MANIFEST_COLUMNS = [
+    "image_id",
+    "source",
+    "original_path",
+    "label",
+    "group_id",
+    "magnification",
+    "width",
+    "height",
+    "sha256",
+    "phash",
+    "is_augmented_copy",
+    "duplicate_of",
+    "duplicate_cluster",
+    "publisher_augmented",
+    "nearest_original_distance",
+    "original_split",
+    "split",
+    "n_patches",
+    "n_grid_tiles",
+    "tiling_mode",
+    "size_bytes",
+    "status",
+]
+
+
 class PrepareError(RuntimeError):
     """The input cannot be turned into a valid dataset; the message says why."""
+
+
+def label_conflicts(candidates: pd.DataFrame) -> pd.DataFrame:
+    """Duplicate clusters whose members carry both labels (ADR-0003). One row per cluster:
+    ``duplicate_cluster``, ``n_images``, ``byte_identical`` (True if two members with different
+    labels have the same SHA-256; False means a pHash near-duplicate conflict) and ``paths``."""
+    rows: list[dict[str, Any]] = []
+    for cluster, frame in candidates.groupby("duplicate_cluster"):
+        if frame["label"].nunique() < 2:
+            continue
+        identical = bool((frame.groupby("sha256")["label"].nunique() > 1).any())
+        rows.append(
+            {
+                "duplicate_cluster": cluster,
+                "n_images": len(frame),
+                "byte_identical": identical,
+                "paths": " | ".join(sorted(frame["original_path"])),
+            }
+        )
+    frame = pd.DataFrame(rows, columns=["duplicate_cluster", "n_images", "byte_identical", "paths"])
+    return frame.astype({"n_images": int, "byte_identical": bool})
 
 
 @dataclass(frozen=True)
@@ -177,13 +226,25 @@ def settings_record(settings: PrepareSettings) -> dict[str, Any]:
 
 
 def prepare(
-    raw: Path, out: Path, settings: PrepareSettings | None = None, force: bool = False
+    raw: Path,
+    out: Path,
+    settings: PrepareSettings | None = None,
+    force: bool = False,
+    manifest_only: bool = False,
 ) -> Path:
+    """Build a prepared dataset. With ``manifest_only`` the patch pass is skipped: ``out`` gets
+    manifest.csv, summary.csv (patch counts 0) and manifest_only.json, never dataset.json, so it
+    can never be mistaken for (or used as) a training dataset. A dry run of everything up to and
+    including the split and the leakage test, streaming one image at a time."""
     settings = settings or PrepareSettings()
+    if manifest_only and out.exists() and not (out / MANIFEST_ONLY_INFO).is_file():
+        raise PrepareError(
+            f"{out} exists and is not a manifest-only folder; choose a new --out for a dry run"
+        )
     with ImageSource(raw) as source:
         fingerprint = source.fingerprint()
         existing = out / "dataset.json"
-        if existing.is_file():
+        if existing.is_file() and not manifest_only:
             info = read_json(existing)
             if info.get("source") == fingerprint and info.get("settings") == settings_record(
                 settings
@@ -221,19 +282,29 @@ def prepare(
         dup_labels = clusters(distances, settings.duplicate_threshold)
         manifest["duplicate_cluster"] = None
         manifest.loc[positions, "duplicate_cluster"] = [f"dup-{int(c):05d}" for c in dup_labels]
-        conflicting = manifest.loc[positions].groupby("duplicate_cluster")["label"].nunique()
-        if (conflicting > 1).any():
-            examples = list(conflicting[conflicting > 1].index[:3])
-            raise PrepareError(
-                f"{int((conflicting > 1).sum())} duplicate cluster(s) contain both labels "
-                f"(e.g. {examples}); inspect manifest.csv in {partial} and lower "
-                "--duplicate-threshold"
+        # ADR-0003: a duplicate cluster whose members carry both labels has no trustworthy label
+        # (the Rahman release holds 14 byte-identical Normal/OSCC pairs). Every member is
+        # excluded (status "label_conflict"); none of them is used for training or testing.
+        conflicts = label_conflicts(manifest.loc[positions])
+        conflict_clusters = set(conflicts["duplicate_cluster"])
+        if conflict_clusters:
+            members = manifest["duplicate_cluster"].isin(conflict_clusters)
+            manifest.loc[members, "status"] = LABEL_CONFLICT
+            logger.warning(
+                "%d duplicate cluster(s) carry both labels (%d byte-identical, %d near-duplicate);"
+                " all %d member images are excluded (ADR-0003)",
+                len(conflicts),
+                int(conflicts["byte_identical"].sum()),
+                int((~conflicts["byte_identical"]).sum()),
+                int(members.sum()),
             )
 
         manifest["is_augmented_copy"] = False
         manifest["duplicate_of"] = None
         manifest["kept"] = False
-        for _, frame in manifest.loc[positions].groupby("duplicate_cluster"):
+        for cluster, frame in manifest.loc[positions].groupby("duplicate_cluster"):
+            if cluster in conflict_clusters:
+                continue
             ordered = _representative_order(frame)
             keep_index = ordered.index[0]
             manifest.loc[keep_index, "kept"] = True
@@ -310,6 +381,30 @@ def prepare(
         manifest["n_grid_tiles"] = 0
         manifest["tiling_mode"] = None
 
+        if manifest_only:
+            _write_manifest(partial, manifest, settings)
+            write_json(
+                partial / MANIFEST_ONLY_INFO,
+                {
+                    "manifest_only": True,
+                    "note": "dry run: no patches were extracted; not a training dataset",
+                    "dataset_version": settings.dataset_version,
+                    "preprocess_version": PREPROCESS_VERSION,
+                    "seed": settings.seed,
+                    "source": fingerprint,
+                    "settings": settings_record(settings),
+                    **_selection_counts(manifest, conflicts, settings),
+                    "created_at": iso(utc_now()),
+                    "seconds": round(time.perf_counter() - started, 1),
+                    "leakage_test": "passed",
+                },
+            )
+            if out.exists():
+                shutil.rmtree(out)
+            partial.rename(out)
+            print_manifest_only(read_json(out / MANIFEST_ONLY_INFO))
+            return out
+
         # Pass 2: patches for kept images, split by split.
         tiling = settings.tiling
         image_rows: list[dict[str, Any]] = []
@@ -350,34 +445,7 @@ def prepare(
                     _progress(done, total, patch_started, "patching")
 
         write_images_table(partial, image_rows)
-        columns = [
-            "image_id",
-            "source",
-            "original_path",
-            "label",
-            "group_id",
-            "magnification",
-            "width",
-            "height",
-            "sha256",
-            "phash",
-            "is_augmented_copy",
-            "duplicate_of",
-            "duplicate_cluster",
-            "publisher_augmented",
-            "nearest_original_distance",
-            "original_split",
-            "split",
-            "n_patches",
-            "n_grid_tiles",
-            "tiling_mode",
-            "size_bytes",
-            "status",
-        ]
-        manifest["source"] = settings.source_name
-        manifest[columns].to_csv(partial / "manifest.csv", index=False)
-        summary = summarize(manifest)
-        summary.to_csv(partial / "summary.csv", index=False)
+        _write_manifest(partial, manifest, settings)
 
         kept_final = manifest[manifest["kept"]]
         write_dataset_info(
@@ -402,7 +470,7 @@ def prepare(
                     for split in SPLITS
                 },
                 "n_source_images": len(manifest),
-                "n_unreadable": int((manifest["status"] != "ok").sum()),
+                "n_unreadable": _n_unreadable(manifest),
                 "n_publisher_augmented_excluded": int(manifest["publisher_augmented"].sum()),
                 "n_publisher_augmented_matching_an_original": int(
                     (
@@ -422,6 +490,7 @@ def prepare(
                 "created_at": iso(utc_now()),
                 "seconds": round(time.perf_counter() - started, 1),
                 "leakage_test": "passed",
+                **_conflict_counts(conflicts),
             },
         )
     if out.exists():
@@ -429,6 +498,92 @@ def prepare(
     partial.rename(out)
     print_summary(read_json(out / "dataset.json"), pd.read_csv(out / "summary.csv"))
     return out
+
+
+def _write_manifest(folder: Path, manifest: pd.DataFrame, settings: PrepareSettings) -> None:
+    manifest["source"] = settings.source_name
+    manifest[MANIFEST_COLUMNS].to_csv(folder / "manifest.csv", index=False)
+    summarize(manifest).to_csv(folder / "summary.csv", index=False)
+
+
+def _n_unreadable(manifest: pd.DataFrame) -> int:
+    return int(manifest["status"].astype(str).str.startswith("unreadable").sum())
+
+
+def _conflict_counts(conflicts: pd.DataFrame) -> dict[str, Any]:
+    """ADR-0003 counts recorded in dataset.json (and manifest_only.json)."""
+    return {
+        "n_label_conflict_clusters": {
+            "byte_identical": int(conflicts["byte_identical"].sum()),
+            "near_duplicate": int((~conflicts["byte_identical"].astype(bool)).sum()),
+        },
+        "n_label_conflict_images_excluded": int(conflicts["n_images"].sum()),
+        "label_conflicts": [
+            {
+                "duplicate_cluster": str(row.duplicate_cluster),
+                "byte_identical": bool(row.byte_identical),
+                "paths": str(row.paths).split(" | "),
+            }
+            for row in conflicts.itertuples()
+        ],
+    }
+
+
+def _selection_counts(
+    manifest: pd.DataFrame, conflicts: pd.DataFrame, settings: PrepareSettings
+) -> dict[str, Any]:
+    kept = manifest[manifest["kept"]]
+    per_split = {
+        split: {
+            "images": int((kept["split"] == split).sum()),
+            "by_class": {
+                name: int(((kept["split"] == split) & (kept["label"] == label)).sum())
+                for label, name in ((0, "non_oscc"), (1, "oscc"))
+            },
+        }
+        for split in SPLITS
+    }
+    return {
+        "counts": per_split,
+        "n_source_images": len(manifest),
+        "n_unreadable": _n_unreadable(manifest),
+        "n_publisher_augmented_excluded": int(manifest["publisher_augmented"].sum()),
+        "n_publisher_augmented_matching_an_original": int(
+            (
+                pd.to_numeric(manifest["nearest_original_distance"], errors="coerce")
+                <= settings.duplicate_threshold
+            ).sum()
+        ),
+        "n_duplicates_removed": int(
+            (manifest["is_augmented_copy"] & ~manifest["publisher_augmented"]).sum()
+        ),
+        "n_kept_images": len(kept),
+        "n_groups": int(kept["group_id"].nunique()),
+        "largest_group": int(kept["group_id"].value_counts().iloc[0]) if len(kept) else 0,
+        **_conflict_counts(conflicts),
+    }
+
+
+def print_manifest_only(info: dict[str, Any]) -> None:
+    print("")
+    print(f"MANIFEST-ONLY dry run of {info['dataset_version']} (no patches extracted)")
+    for key in (
+        "n_source_images",
+        "n_unreadable",
+        "n_publisher_augmented_excluded",
+        "n_publisher_augmented_matching_an_original",
+        "n_duplicates_removed",
+        "n_label_conflict_clusters",
+        "n_label_conflict_images_excluded",
+        "n_kept_images",
+        "n_groups",
+        "largest_group",
+    ):
+        print(f"  {key}: {info[key]}")
+    for split in SPLITS:
+        counts = info["counts"][split]
+        print(f"  {split:>5}: {counts['images']} images {counts['by_class']}")
+    print(f"  leakage test: {info['leakage_test']}")
 
 
 def _keep_rate(kept: pd.DataFrame) -> float | None:

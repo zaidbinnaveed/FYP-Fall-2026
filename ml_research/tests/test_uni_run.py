@@ -9,6 +9,7 @@ import pytest
 import yaml
 
 from oscc_ml.config import DEFAULT_CONFIG_DIR
+from oscc_ml.data.processed import read_dataset_info
 from oscc_ml.data.testzip import make_test_zip
 from oscc_ml.pipeline import (
     LOCK_NAME,
@@ -34,7 +35,11 @@ def setup(tmp_path_factory: pytest.TempPathFactory) -> PipelineOptions:
     protocol["data"]["num_workers"] = 0
     (configs / "protocol.yaml").write_text(yaml.safe_dump(protocol), "utf-8")
     raw = make_test_zip(
-        root / "raw.zip", originals_per_class=24, augmented_per_original=1, size=(300, 260)
+        root / "raw.zip",
+        originals_per_class=24,
+        augmented_per_original=1,
+        size=(300, 260),
+        label_conflicts=2,  # ADR-0003: the run must exclude them, not abort
     )
     return PipelineOptions(
         raw=raw,
@@ -73,6 +78,16 @@ def test_all_steps_run_and_the_report_refuses_synthetic_data(
     assert "synthetic" in log
     assert "uni-run summary" in log
     assert (setup.runs_dir / "export" / "results_small.zip").is_file()
+
+
+def test_label_conflicts_are_excluded_by_the_uni_run(
+    first_run: dict[str, str], setup: PipelineOptions
+) -> None:
+    assert first_run["prepare"] == "done"
+    info = read_dataset_info(setup.data_root)
+    assert info["n_label_conflict_clusters"] == {"byte_identical": 1, "near_duplicate": 1}
+    assert info["n_label_conflict_images_excluded"] == 4
+    assert "carry both labels" in (setup.runs_dir / LOG_NAME).read_text("utf-8")
 
 
 def test_rerun_skips_completed_work(first_run: dict[str, str], setup: PipelineOptions) -> None:
