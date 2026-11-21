@@ -20,20 +20,20 @@ import torch
 from torch import nn
 from torchvision import models
 
+from oscc_ml.catalog import ALL_ARCHITECTURES, DISPLAY_NAME, FAMILY
+
+__all__ = [
+    "ALL_ARCHITECTURES",
+    "DISPLAY_NAME",
+    "FAMILY",
+    "WEIGHTS_SOURCE",
+    "available_architectures",
+    "build_model",
+    "parameter_count",
+]
+
 VIT_CHECKPOINT = "google/vit-base-patch16-224"
 
-DISPLAY_NAME = {
-    "resnet50": "ResNet50",
-    "efficientnet_b0": "EfficientNet-B0",
-    "densenet121": "DenseNet121",
-    "vit_b_16": "ViT-B/16",
-}
-FAMILY = {
-    "resnet50": "CNN",
-    "efficientnet_b0": "CNN",
-    "densenet121": "CNN",
-    "vit_b_16": "ViT",
-}
 WEIGHTS_SOURCE = {
     "resnet50": "torchvision ResNet50_Weights.IMAGENET1K_V1",
     "efficientnet_b0": "torchvision EfficientNet_B0_Weights.IMAGENET1K_V1",
@@ -104,8 +104,6 @@ _REGISTRY: dict[str, Builder] = {
     "densenet121": _densenet121,
     "vit_b_16": _vit_b_16,
 }
-
-ALL_ARCHITECTURES = ("resnet50", "efficientnet_b0", "densenet121", "vit_b_16")
 
 
 def available_architectures() -> list[str]:

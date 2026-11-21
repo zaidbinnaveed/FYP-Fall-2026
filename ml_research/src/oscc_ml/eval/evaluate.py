@@ -16,6 +16,7 @@ from typing import Any
 import pandas as pd
 import torch
 
+from oscc_ml.catalog import EVALUATION_FILE
 from oscc_ml.config import load_protocol
 from oscc_ml.cost import count_gflops, measure_latency
 from oscc_ml.eval.bootstrap import grouped_bootstrap, point_metrics
@@ -23,7 +24,6 @@ from oscc_ml.eval.threshold import calibrate_threshold, outcome_counts
 from oscc_ml.models.factory import build_model, parameter_count
 from oscc_ml.utils.io import iso, read_json, utc_now, write_json
 
-EVALUATION_FILE = "evaluation.json"
 logger = logging.getLogger("oscc_ml.eval")
 
 

@@ -16,10 +16,9 @@ import math
 from pathlib import Path
 from typing import Any
 
+from oscc_ml.catalog import ALL_ARCHITECTURES, is_synthetic
 from oscc_ml.config import load_protocol
 from oscc_ml.data.processed import read_dataset_info
-from oscc_ml.data.synthetic import is_synthetic
-from oscc_ml.models.factory import ALL_ARCHITECTURES
 from oscc_ml.paths import SWEEP_DIR_NAME
 from oscc_ml.train.runner import run_training
 from oscc_ml.utils.io import iso, read_json, utc_now, write_json

@@ -19,9 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from oscc_ml.data.synthetic import is_synthetic
-from oscc_ml.eval.evaluate import EVALUATION_FILE
-from oscc_ml.models.factory import ALL_ARCHITECTURES, DISPLAY_NAME, FAMILY
+from oscc_ml.catalog import ALL_ARCHITECTURES, DISPLAY_NAME, EVALUATION_FILE, FAMILY, is_synthetic
 from oscc_ml.utils.io import iso, read_json, utc_now, write_json
 
 NOT_YET_RUN = "not yet run"

@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 from numpy.typing import NDArray
 
+from oscc_ml.catalog import SYNTHETIC_PREFIX, is_synthetic
 from oscc_ml.data.processed import (
     SPLITS,
     PatchMeta,
@@ -21,12 +22,14 @@ from oscc_ml.data.processed import (
 )
 from oscc_ml.preprocess import PREPROCESS_VERSION
 
+__all__ = [
+    "SYNTHETIC_DATASET_VERSION",
+    "SYNTHETIC_PREFIX",
+    "is_synthetic",
+    "write_synthetic_dataset",
+]
+
 SYNTHETIC_DATASET_VERSION = "synthetic-smoke"
-SYNTHETIC_PREFIX = "synthetic"
-
-
-def is_synthetic(dataset_version: str) -> bool:
-    return dataset_version.startswith(SYNTHETIC_PREFIX)
 
 
 def synthetic_patch(rng: np.random.Generator, label: int, size: int) -> NDArray[np.uint8]:

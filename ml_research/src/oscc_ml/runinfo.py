@@ -5,12 +5,14 @@ from __future__ import annotations
 import importlib.metadata
 import os
 import platform
-import subprocess
 import sys
-from pathlib import Path
 from typing import Any
 
 import torch
+
+from oscc_ml.utils.gitinfo import git_state
+
+__all__ = ["environment_info", "git_state"]
 
 
 def _version(dist: str) -> str | None:
@@ -48,29 +50,4 @@ def environment_info(device: torch.device) -> dict[str, Any]:
         "gpu_names": gpus,
         "device_used": str(device),
         "torch_num_threads": torch.get_num_threads(),
-    }
-
-
-def git_state(repo_dir: Path) -> dict[str, Any]:
-    """Commit hash and whether the working tree had uncommitted changes."""
-
-    def run(*args: str) -> str | None:
-        try:
-            out = subprocess.run(  # noqa: S603 - fixed git arguments
-                ["git", *args],  # noqa: S607 - git from PATH
-                cwd=repo_dir,
-                capture_output=True,
-                text=True,
-                check=True,
-                timeout=10,
-            )
-        except (OSError, subprocess.SubprocessError):
-            return None
-        return out.stdout.strip()
-
-    commit = run("rev-parse", "HEAD")
-    status = run("status", "--porcelain", "--untracked-files=no")
-    return {
-        "git_commit": commit or "unknown",
-        "git_dirty": None if status is None else bool(status),
     }
