@@ -131,13 +131,16 @@ oscc-ml prepare --raw <zip or folder>                                      # man
 oscc-ml make-sample --raw <zip or folder> --per-class 30                   # small local sample in data/sample/ (reads only those files)
 oscc-ml prepare --raw <zip or folder> --manifest-only --out <new folder>   # dry run: hashing, dedup, label-conflict exclusion (ADR-0003), split, leakage test; no patches
 oscc-ml check-leakage                                                      # re-run the leakage test on a prepared dataset
+oscc-ml audit --prepared <prepared dir | runs/dataset/<version>>          # docs/results/dataset_audit.md from manifest.csv + dataset.json only (labels SAMPLE/full)
+oscc-ml he-calibrate --images <H&E folder>                                # FR-2.2 colour profile -> configs/he_profile.json (aug_ skipped)
+oscc-ml he-evaluate --images <H&E folder> --out <md>                      # false-reject (in-sample + 5-fold CV) and false-accept on offline non-histology images
 oscc-ml make-test-zip --out <zip>                                          # synthetic Kaggle-like archive for CI and dry runs
 oscc-ml train --model resnet50 --smoke                                     # CPU smoke training (synthetic, not reportable)
 oscc-ml sweep                                                              # shared LR sweep -> runs/sweep/chosen_lr.json (resumable)
 oscc-ml train-all --resume                                                 # 4 models x seed 42 with the chosen LR (resumable)
 oscc-ml evaluate                                                           # tau from val, test metrics + grouped bootstrap CIs, params/GFLOPs/latency
 oscc-ml report --copy-to ../docs/results/baseline_fyp1.md                  # baseline table from run folders only (refuses smoke/synthetic)
-oscc-ml pack-results                                                       # runs/export/results_small.zip + checkpoints.zip (SHA-256 manifest)
+oscc-ml pack-results                                                       # runs/export/results_small.zip (+ dataset metadata, no patches) + checkpoints.zip (SHA-256 manifest)
 oscc-ml import-results results_small.zip                                   # at home: verify + unpack into runs/, then `oscc-ml report`
 oscc-ml check / oscc-ml env / oscc-ml make-synthetic-data --out <dir>      # readiness check / environment info / test data
 cd frontend && npm ci && npm run dev                                       # SPA dev server

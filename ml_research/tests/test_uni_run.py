@@ -90,6 +90,18 @@ def test_label_conflicts_are_excluded_by_the_uni_run(
     assert "carry both labels" in (setup.runs_dir / LOG_NAME).read_text("utf-8")
 
 
+def test_results_small_carries_the_dataset_metadata(
+    first_run: dict[str, str], setup: PipelineOptions
+) -> None:
+    import zipfile
+
+    with zipfile.ZipFile(setup.runs_dir / "export" / "results_small.zip") as archive:
+        names = set(archive.namelist())
+    for name in ("dataset.json", "manifest.csv", "summary.csv", "images.csv"):
+        assert f"dataset/synthetic-uni/{name}" in names
+    assert not any(n.endswith(".u8") or "/patches_" in n for n in names)
+
+
 def test_rerun_skips_completed_work(first_run: dict[str, str], setup: PipelineOptions) -> None:
     before = sorted(p.name for p in setup.runs_dir.glob("*/run_info.json"))
     second = {r.name: r.status for r in run_pipeline(setup)}

@@ -1,0 +1,43 @@
+{
+  "version": "he-0.1.0",
+  "rule": "pass if every feature is within [low, high]; ranges = 1st-99th percentile of the calibration images widened by 0.25 of the span, clipped to bounds",
+  "max_side": 512,
+  "od_stain_threshold": 0.3,
+  "min_stained_pixels": 500,
+  "ranges": {
+    "stained_fraction": {
+      "low": 0.44066651662190753,
+      "high": 1.0
+    },
+    "saturation_mean": {
+      "low": 0.024309213284741407,
+      "high": 0.7398791919845826
+    },
+    "hue_mean": {
+      "low": 216.3801403314865,
+      "high": 293.1419518544528
+    },
+    "hue_concentration": {
+      "low": 0.6795929546189708,
+      "high": 1.0
+    },
+    "od_green_share": {
+      "low": 0.2977372094348701,
+      "high": 0.6452553397079783
+    },
+    "od_red_share": {
+      "low": 0.22251445466230163,
+      "high": 0.5005677571007217
+    },
+    "flat_fraction": {
+      "low": 0.0,
+      "high": 0.0009140297272025859
+    }
+  },
+  "n_calibration_images": 60,
+  "calibration_images": [
+    "data/sample"
+  ],
+  "created_at": "2026-11-21T16:52:26Z",
+  "note": "calibrated on the images listed above (aug_ copies skipped)"
+}
