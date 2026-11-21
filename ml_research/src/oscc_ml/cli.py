@@ -383,6 +383,14 @@ def prepare_command(
     force: Annotated[
         bool, typer.Option(help="Rebuild even if --out holds another dataset")
     ] = False,
+    manifest_only: Annotated[
+        bool,
+        typer.Option(
+            "--manifest-only",
+            help="Dry run: hashing, dedup, label-conflict exclusion, split and leakage test only; "
+            "no patches, no dataset.json (use a new --out)",
+        ),
+    ] = False,
 ) -> None:
     """Manifest (SHA-256 + pHash), dedup, grouped 70:15:15 split, leakage test, 224 px patches."""
     from oscc_ml.data.prepare import PrepareError, PrepareSettings, prepare, protocol_tiling
@@ -399,12 +407,12 @@ def prepare_command(
         tiling=protocol_tiling(max_tissue_threshold),
     )
     try:
-        prepare(raw, out, settings, force=force)
+        prepare(raw, out, settings, force=force, manifest_only=manifest_only)
     except (FileNotFoundError, ValueError, PrepareError, UnlabelledPathError, SplitError) as exc:
         raise _fail(str(exc), code=1) from exc
     except LeakageError as exc:
         raise _fail(str(exc), code=1) from exc
-    typer.echo(f"prepared dataset: {out}")
+    typer.echo(f"{'manifest-only dry run' if manifest_only else 'prepared dataset'}: {out}")
 
 
 @app.command("check-leakage")
@@ -457,6 +465,13 @@ def make_test_zip_command(
     augmented: Annotated[int, typer.Option(help="Augmented copies per train image")] = 2,
     size: Annotated[str, typer.Option(help="Image size WIDTHxHEIGHT")] = "900x700",
     seed: Annotated[int, typer.Option()] = 42,
+    label_conflicts: Annotated[
+        int,
+        typer.Option(
+            help="Extra images saved under BOTH class folders (even: byte-identical, odd: "
+            "near-duplicate), as in the Rahman release (ADR-0003)"
+        ),
+    ] = 0,
 ) -> None:
     """Synthetic archive laid out like the Kaggle release (CI and dry runs only)."""
     from oscc_ml.data.testzip import make_test_zip
@@ -465,7 +480,9 @@ def make_test_zip_command(
         width, height = (int(v) for v in size.lower().split("x"))
     except ValueError as exc:
         raise _fail("--size must look like 900x700") from exc
-    make_test_zip(out, per_class, augmented, seed, size=(width, height))
+    make_test_zip(
+        out, per_class, augmented, seed, size=(width, height), label_conflicts=label_conflicts
+    )
     typer.echo(
         f"test zip written: {out} (synthetic; prepare it with --dataset-version synthetic-...)"
     )

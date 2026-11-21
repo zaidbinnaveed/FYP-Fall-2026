@@ -58,13 +58,17 @@ def make_test_zip(
     seed: int = 42,
     size: tuple[int, int] = (900, 700),
     duplicate_originals: bool = True,
+    label_conflicts: int = 0,
 ) -> Path:
     """Write the archive. Mirrors the real release (checked Nov 2026): originals named
     ``<Class>_<mag>_<n>.jpg`` in train/val/test; augmented copies only in train, named
     ``aug_<n>_<k>.jpg``, 224 x 224, no magnification in the name. Half the copies are whole-image
     resizes (pHash finds them), half are random crops (pHash cannot). With
     ``duplicate_originals`` the first original of each class is also saved in test/ under another
-    name, so prepare's pHash deduplication must remove a cross-split duplicate."""
+    name, so prepare's pHash deduplication must remove a cross-split duplicate. ``label_conflicts``
+    adds that many extra images saved under BOTH class folders, as in the real release (ADR-0003):
+    even-numbered ones byte-identical, odd-numbered ones re-encoded slightly brighter (a pHash
+    near-duplicate). They are generated after everything else, so the other files are unchanged."""
     rng = np.random.default_rng(seed)
     out.parent.mkdir(parents=True, exist_ok=True)
     width, height = size
@@ -97,5 +101,11 @@ def make_test_zip(
                         aug = aug.crop((left, top, left + 224, top + 224))
                     aug_counter += 1
                     archive.writestr(f"{ROOT}/{split}/{cls}/aug_{aug_counter}_{k}.jpg", _jpeg(aug))
+        for k in range(label_conflicts):
+            image = _image(rng, 0, width, height)
+            data = _jpeg(image)
+            archive.writestr(f"{ROOT}/train/Normal/Normal_400x_{900 + k}.jpg", data)
+            twin = data if k % 2 == 0 else _jpeg(ImageEnhance.Brightness(image).enhance(1.03))
+            archive.writestr(f"{ROOT}/val/OSCC/OSCC_400x_{900 + k}.jpg", twin)
         archive.writestr(f"{ROOT}/README.txt", b"synthetic test archive; not histology")
     return out

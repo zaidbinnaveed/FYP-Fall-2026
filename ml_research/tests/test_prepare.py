@@ -169,18 +169,106 @@ def test_unlabelled_paths_fail_loudly(tmp_path: Path) -> None:
         prepare(archive, tmp_path / "out")
 
 
-def test_the_same_image_under_both_labels_is_refused(tmp_path: Path) -> None:
-    rng = np.random.default_rng(0)
-    members = {}
-    for i in range(25):
-        img = Image.fromarray(rng.integers(0, 255, (64, 64, 3), dtype=np.uint8))
-        members[f"d/Normal/n{i}.png"] = img
-        members[f"d/OSCC/o{i}.png"] = Image.fromarray(
-            rng.integers(0, 255, (64, 64, 3), dtype=np.uint8)
-        )
-    members["d/OSCC/copy.png"] = members["d/Normal/n0.png"]
-    with pytest.raises(PrepareError, match="both labels"):
-        prepare(_zip_of(tmp_path / "conflict.zip", members), tmp_path / "out")
+@pytest.fixture(scope="module")
+def conflict_zip(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """24 originals per class plus two images saved under BOTH labels (ADR-0003): one
+    byte-identical pair and one near-duplicate pair (re-encoded slightly brighter)."""
+    return make_test_zip(
+        tmp_path_factory.mktemp("conflict") / "conflict.zip",
+        24,
+        1,
+        size=(300, 260),
+        label_conflicts=2,
+    )
+
+
+def test_label_conflicts_are_excluded_not_fatal(conflict_zip: Path, tmp_path: Path) -> None:
+    out = prepare(conflict_zip, tmp_path / "out", PrepareSettings(dataset_version="synthetic-c"))
+    info = read_dataset_info(out)
+    assert info["n_label_conflict_clusters"] == {"byte_identical": 1, "near_duplicate": 1}
+    assert info["n_label_conflict_images_excluded"] == 4
+    assert len(info["label_conflicts"]) == 2
+    assert info["n_kept_images"] == 48  # the 2 x 24 clean originals, nothing else
+    assert info["n_unreadable"] == 0  # a label conflict is not an unreadable image
+    manifest = pd.read_csv(out / "manifest.csv")
+    conflicted = manifest[manifest["status"] == "label_conflict"]
+    assert sorted(conflicted["original_path"].str.rsplit("/", n=1).str[-1]) == [
+        "Normal_400x_900.jpg",
+        "Normal_400x_901.jpg",
+        "OSCC_400x_900.jpg",
+        "OSCC_400x_901.jpg",
+    ]
+    assert (conflicted["split"] == "excluded").all()
+    assert (conflicted["n_patches"] == 0).all()
+    images = pd.read_csv(out / "images.csv")
+    assert not set(conflicted["image_id"]) & set(images["image_id"])
+    for split in ("train", "val", "test"):
+        patches = pd.read_csv(out / f"patches_{split}.csv")
+        assert not set(conflicted["image_id"]) & set(patches["image_id"])
+
+
+def test_a_conflict_needs_both_labels_in_one_cluster(prepared: Path) -> None:
+    info = read_dataset_info(prepared)  # same-label duplicates only: deduplicated, not conflicts
+    assert info["n_label_conflict_clusters"] == {"byte_identical": 0, "near_duplicate": 0}
+    assert info["label_conflicts"] == []
+    manifest = pd.read_csv(prepared / "manifest.csv")
+    assert not (manifest["status"] == "label_conflict").any()
+
+
+def test_manifest_only_matches_the_full_run_without_patches(
+    conflict_zip: Path, tmp_path: Path
+) -> None:
+    full = prepare(conflict_zip, tmp_path / "full", PrepareSettings(dataset_version="synthetic-c"))
+    dry = prepare(
+        conflict_zip,
+        tmp_path / "dry",
+        PrepareSettings(dataset_version="synthetic-c"),
+        manifest_only=True,
+    )
+    assert sorted(p.name for p in dry.iterdir()) == [
+        "manifest.csv",
+        "manifest_only.json",
+        "summary.csv",
+    ]
+    a = pd.read_csv(full / "manifest.csv").drop(
+        columns=["n_patches", "n_grid_tiles", "tiling_mode"]
+    )
+    b = pd.read_csv(dry / "manifest.csv").drop(columns=["n_patches", "n_grid_tiles", "tiling_mode"])
+    pd.testing.assert_frame_equal(a, b)  # same hashing, dedup, conflicts, groups and split
+    info = json.loads((dry / "manifest_only.json").read_text("utf-8"))
+    full_info = read_dataset_info(full)
+    assert info["manifest_only"] is True
+    assert info["n_kept_images"] == full_info["n_kept_images"]
+    assert info["n_label_conflict_clusters"] == full_info["n_label_conflict_clusters"]
+    for split in ("train", "val", "test"):
+        assert info["counts"][split]["images"] == full_info["counts"][split]["images"]
+
+
+def test_manifest_only_never_overwrites_a_prepared_dataset(prepared: Path, test_zip: Path) -> None:
+    before = (prepared / "dataset.json").read_bytes()
+    with pytest.raises(PrepareError, match="not a manifest-only folder"):
+        prepare(test_zip, prepared, PrepareSettings(dataset_version="synthetic-prep"), True, True)
+    assert (prepared / "dataset.json").read_bytes() == before
+
+
+def test_cli_manifest_only(conflict_zip: Path, tmp_path: Path) -> None:
+    out = tmp_path / "dry-cli"
+    result = CliRunner().invoke(
+        app,
+        [
+            "prepare",
+            "--raw",
+            str(conflict_zip),
+            "--out",
+            str(out),
+            "--manifest-only",
+            "--dataset-version",
+            "synthetic-c",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "MANIFEST-ONLY" in result.output
+    assert not (out / "dataset.json").exists()
 
 
 def test_leakage_test_fails_loudly_on_injected_leaks(prepared: Path) -> None:
