@@ -265,3 +265,68 @@ def test_provenance_listing_match_and_mismatch(tmp_path: Path, extracted: Path) 
     code, result = _run(tmp_path, "--mendeley-dir", str(bad), raw=extracted)
     assert code == 1
     assert "C1 same file name + class folder has the same bytes in both releases" in _failed(result)
+
+
+def test_reviewed_pairs_are_reproduced_independently(
+    tmp_path: Path, conflict_zip: Path, manifest_dir: Path
+) -> None:
+    """ADR-0005: the verifier parses the same reviewed list itself and must reach prepare's result;
+    a listed file that is missing stops it."""
+    import pandas as pd
+    import yaml
+
+    from oscc_ml.data.reviewed import load_reviewed_duplicates
+
+    manifest = pd.read_csv(manifest_dir / "manifest.csv")
+    originals = manifest[~manifest["publisher_augmented"]]
+    sizes = manifest["duplicate_cluster"].value_counts()
+    alone = originals[
+        (originals["split"] != "excluded")
+        & (originals["label"] == 1)
+        & (originals["duplicate_cluster"].map(sizes) == 1)
+    ]
+    a, b = alone.iloc[0], alone.iloc[-1]
+
+    def entry(row: pd.Series) -> dict[str, str]:
+        return {"name": row["original_path"].rsplit("/", 1)[-1], "sha256": row["sha256"]}
+
+    listing = {
+        "version": 1,
+        "source_name": "synthetic",
+        "source_original_count": len(originals),
+        "pairs": [
+            {
+                "a": entry(a),
+                "b": entry(b),
+                "reason": "t",
+                "evidence": "t",
+                "reviewer": "t",
+                "date": "2026-11-22",
+            }
+        ],
+    }
+    path = tmp_path / "reviewed.yaml"
+    path.write_text(yaml.safe_dump(listing), "utf-8")
+    reviewed_dir = tmp_path / "dry-reviewed"
+    prepare(
+        conflict_zip,
+        reviewed_dir,
+        PrepareSettings(
+            dataset_version="synthetic-audit", reviewed_duplicates=load_reviewed_duplicates(path)
+        ),
+        manifest_only=True,
+    )
+    code, result = _run(
+        tmp_path, "--reviewed-duplicates", str(path), raw=conflict_zip, manifest=reviewed_dir
+    )
+    assert code == 0, _failed(result)
+    assert result["reviewed_duplicates_status"] == "applied: 1 pair(s)"
+    # the same list against the manifest made WITHOUT it must disagree
+    code, result = _run(
+        tmp_path, "--reviewed-duplicates", str(path), raw=conflict_zip, manifest=manifest_dir
+    )
+    assert code == 1
+    listing["pairs"][0]["b"]["sha256"] = "0" * 64
+    path.write_text(yaml.safe_dump(listing), "utf-8")
+    with pytest.raises(SystemExit, match="file missing"):
+        _run(tmp_path, "--reviewed-duplicates", str(path), raw=conflict_zip)

@@ -131,8 +131,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--distance", type=int, default=12)
     p.add_argument("--n-random", type=int, default=20)
     p.add_argument("--seed", type=int, default=42)
+    p.add_argument(
+        "--reviewed-duplicates",
+        type=Path,
+        default=Path(__file__).resolve().parents[2] / "configs/data/reviewed_duplicates.yaml",
+    )
     args = p.parse_args(argv)
 
+    reviewed = V.load_reviewed(args.reviewed_duplicates)
     source = V.Source(args.raw)
     rows = V.scan(source)
     sel = V.select(
@@ -141,9 +147,12 @@ def main(argv: list[str] | None = None) -> int:
             duplicate_threshold=args.new_threshold,
             group_threshold=args.group_threshold,
             seed=args.seed,
+            reviewed=reviewed,
         ),
     )
     candidates, dist = sel["candidates"], sel["dist"]
+    # pairs that stop counting as duplicates by pHash alone (the reviewed list is not applied here,
+    # so the sheet shows every pair the reviewer looked at)
     new_clusters = V.partition(dist, args.new_threshold)
 
     # 1. pairs that stop counting as duplicates
@@ -160,6 +169,9 @@ def main(argv: list[str] | None = None) -> int:
             if still
             else f"no longer duplicates at threshold {args.new_threshold}"
         )
+        listed = {(a["name"], a["sha256"]), (b["name"], b["sha256"])}
+        if any(set(pair) == listed for pair in (reviewed or {}).get("pairs", [])):
+            note += "; REVIEWED SAME FIELD -> kept as duplicates (ADR-0005 list)"
         dropped.append({"a": a, "b": b, "distance": int(dist[i, j]), "note": note})
     dropped.sort(key=lambda d: (d["a"]["path"], d["b"]["path"]))
     name = f"pairs_at_{low}-{args.old_threshold}"

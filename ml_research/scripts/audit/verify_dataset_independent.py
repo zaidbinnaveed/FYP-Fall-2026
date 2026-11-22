@@ -47,6 +47,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, BinaryIO
 
 import numpy as np
+import yaml
 from PIL import Image
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
@@ -203,11 +204,16 @@ def query_distances(queries: np.ndarray, references: np.ndarray) -> np.ndarray:
     return best
 
 
-def partition(distances: np.ndarray, threshold: int) -> list[int]:
-    """Connected components of 'distance <= threshold' (scipy csgraph), renumbered 0..k-1 in the
-    order of each component's first (lowest-index) member."""
+def partition(
+    distances: np.ndarray, threshold: int, extra: list[tuple[int, int]] | None = None
+) -> list[int]:
+    """Connected components of 'distance <= threshold' plus ``extra`` links (scipy csgraph),
+    renumbered 0..k-1 in the order of each component's first (lowest-index) member."""
     n = distances.shape[0]
     rows, cols = np.nonzero(distances <= threshold)
+    if extra:
+        rows = np.concatenate([rows, [a for a, _ in extra]])
+        cols = np.concatenate([cols, [b for _, b in extra]])
     graph = coo_matrix((np.ones(len(rows), dtype=np.int8), (rows, cols)), shape=(n, n))
     _, raw = connected_components(graph, directed=False)
     renumber: dict[int, int] = {}
@@ -283,13 +289,49 @@ def scan(source: Source, log_every: int = 250) -> list[dict[str, Any]]:
     return rows
 
 
+def load_reviewed(path: Path | None) -> dict[str, Any] | None:
+    """The reviewed same-field list (ADR-0005), parsed here without oscc_ml."""
+    if path is None:
+        return None
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return {
+        "count": int(data["source_original_count"]),
+        "pairs": [
+            ((p["a"]["name"], p["a"]["sha256"].lower()), (p["b"]["name"], p["b"]["sha256"].lower()))
+            for p in data["pairs"]
+        ],
+    }
+
+
+def reviewed_pairs(
+    candidates: list[dict[str, Any]], reviewed: dict[str, Any] | None
+) -> tuple[list[tuple[int, int]], str]:
+    """Indices of the reviewed pairs among the candidates. Required (missing file or conflicting
+    labels -> SystemExit) when the source has exactly the listed number of originals."""
+    if reviewed is None:
+        return [], "disabled"
+    if len(candidates) != reviewed["count"]:
+        return [], f"not applicable ({len(candidates)} originals, list is for {reviewed['count']})"
+    where = {(r["name"], r["sha256"]): i for i, r in enumerate(candidates)}
+    links = []
+    for a, b in reviewed["pairs"]:
+        if a not in where or b not in where:
+            raise SystemExit(f"reviewed pair {a[0]} / {b[0]}: file missing from the source")
+        i, j = where[a], where[b]
+        if candidates[i]["label"] != candidates[j]["label"]:
+            raise SystemExit(f"reviewed pair {a[0]} / {b[0]}: conflicting labels")
+        links.append((i, j))
+    return links, f"applied: {len(links)} pair(s)"
+
+
 def select(rows: list[dict[str, Any]], args: argparse.Namespace) -> dict[str, Any]:
     """Re-derive candidates, duplicate clusters, conflicts, kept images, groups and the split."""
     images = [r for r in rows if r["is_image"]]
     candidates = [r for r in images if r["readable"] and not r["augmented"]]
     hashes = np.array([r["hashes"] for r in candidates], dtype=np.uint64).reshape(-1, 8)
     dist = distance_matrix(hashes)
-    dup = partition(dist, args.duplicate_threshold)
+    reviewed_links, reviewed_status = reviewed_pairs(candidates, getattr(args, "reviewed", None))
+    dup = partition(dist, args.duplicate_threshold, reviewed_links)
     for r, c in zip(candidates, dup, strict=True):
         r["dup_cluster"] = c
 
@@ -391,6 +433,7 @@ def select(rows: list[dict[str, Any]], args: argparse.Namespace) -> dict[str, An
         "split_a": split_a,
         "split_b": split_b,
         "augmented": augmented,
+        "reviewed_status": reviewed_status,
     }
 
 
@@ -622,6 +665,14 @@ def compare_manifest(
         {"groups_here": len(here_grp), "groups_manifest": len(there_grp)},
     )
 
+    here_status, there_status = sel["reviewed_status"], str(info.get("reviewed_duplicates_status"))
+    rep.check(
+        "C3 reviewed same-field list (ADR-0005) applied identically",
+        here_status == there_status
+        if here_status.startswith("applied")
+        else there_status.split(":")[0] == here_status.split(" (")[0],
+        {"manifest_only.json": there_status, "recomputed": here_status},
+    )
     c = counts(sel, [], threshold)
     expected_info = {
         "n_source_images": len(images),
@@ -900,7 +951,9 @@ def run(args: argparse.Namespace) -> int:
             "duplicate_threshold": args.duplicate_threshold,
             "group_threshold": args.group_threshold,
             "seed": args.seed,
+            "reviewed_duplicates": str(args.reviewed_duplicates),
         },
+        "reviewed_duplicates_status": sel["reviewed_status"],
         "counts": counts(sel, rows, args.duplicate_threshold),
     }
     rep.check("C3 no unreadable images", summary["counts"]["n_unreadable"] == 0)
@@ -945,10 +998,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--expected-zip-sha256", help="published SHA-256 of the zip")
     p.add_argument("--mendeley-dir", type=Path, help="saved Mendeley listing JSON (C1)")
     p.add_argument("--out", type=Path, required=True)
-    p.add_argument("--duplicate-threshold", type=int, default=6)
+    p.add_argument("--duplicate-threshold", type=int, default=4)  # ADR-0005
+    p.add_argument(
+        "--reviewed-duplicates",
+        default=str(Path(__file__).resolve().parents[2] / "configs/data/reviewed_duplicates.yaml"),
+        help="reviewed same-field list (ADR-0005); 'none' to disable",
+    )
     p.add_argument("--group-threshold", type=int, default=10)
     p.add_argument("--seed", type=int, default=42)
-    return p.parse_args(argv)
+    args = p.parse_args(argv)
+    args.reviewed = (
+        None
+        if str(args.reviewed_duplicates).lower() == "none"
+        else load_reviewed(Path(args.reviewed_duplicates))
+    )
+    return args
 
 
 if __name__ == "__main__":
