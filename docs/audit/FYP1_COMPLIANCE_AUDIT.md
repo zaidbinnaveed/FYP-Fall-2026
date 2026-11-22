@@ -1,5 +1,11 @@
 # FYP-I compliance and data-integrity audit
 
+> **Update (Phase 2A, 22 Nov 2026):** finding B1 was resolved by
+> [ADR-0005](../adr/0005-phash-thresholds-and-reviewed-duplicates.md): duplicate threshold 4, group
+> threshold 10, and a reviewed same-field list. The dataset counts in this Phase 1 record are at
+> threshold 6. The current counts are in ADR-0005: 1,179 kept, split 829 / 174 / 176, 35 conflict
+> exclusions; the verifier passed 46/46 checks.
+
 Phase 1 of the FYP-I audit, run 22 Nov 2026 on branch `audit/fyp1-compliance` (from `main` at
 `567a935`). **Read-only:** no code, configuration or data was changed. Only this document,
 `docs/FYP1_DELIVERABLES.md`, the independent verifier `ml_research/scripts/audit/verify_dataset_independent.py`

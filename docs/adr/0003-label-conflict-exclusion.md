@@ -2,6 +2,7 @@
 
 - **Status:** Accepted by the team lead on 21 Nov 2026, before the university run.
 - **Amends:** `oscc-ml prepare` (plan R1, deduplication step). Tiling, normalisation, the split rule, the leakage test, `protocol.yaml` and `PREPROCESS_VERSION` (pp-0.3.0) are unchanged.
+- **Counts superseded by [ADR-0005](0005-phash-thresholds-and-reviewed-duplicates.md)** (22 Nov 2026: duplicate threshold 4 plus a reviewed same-field list): 17 conflict clusters (14 byte-identical, 3 near-duplicate), 35 images excluded, 1,179 kept, split 829 / 174 / 176. The rule in this ADR is unchanged; the evidence below is the 21 Nov record at threshold 6.
 - **Precedence:** SDS > SRS > Proposal. Neither the SDS nor the SRS says what to do with an image that is published under both classes, so this ADR fills a gap and overrides nothing.
 
 ## Context
