@@ -21,6 +21,7 @@ skipped.
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import re
 import shutil
@@ -39,6 +40,12 @@ from oscc_ml.data.processed import (
     PatchWriter,
     write_dataset_info,
     write_images_table,
+)
+from oscc_ml.data.reviewed import (
+    ReviewedDuplicates,
+    ReviewedDuplicatesError,
+    load_reviewed_duplicates,
+    resolve_pairs,
 )
 from oscc_ml.data.sources import (
     ImageSource,
@@ -115,7 +122,7 @@ class PrepareSettings:
     dataset_version: str = "oscc-unified-v1"
     source_name: str = "kaggle_kebede"
     seed: int = 42
-    duplicate_threshold: int = 6
+    duplicate_threshold: int = 4  # ADR-0005 (was 6)
     group_threshold: int = 10
     group_regex: str | None = None
     # File names the publisher uses for augmented copies (Kaggle release: train/*/aug_<n>_<n>.jpg,
@@ -123,6 +130,9 @@ class PrepareSettings:
     # cannot be trusted to link a 224 px crop to its 2048 px original.
     augmented_name_regex: str | None = r"^aug_"
     tiling: TilingParams = field(default_factory=TilingParams)
+    # ADR-0005: visually confirmed same-field pairs, linked in the duplicate graph. Applies only to
+    # the release it names (by number of originals); None disables it (tests of other behaviour).
+    reviewed_duplicates: ReviewedDuplicates | None = field(default_factory=load_reviewed_duplicates)
 
 
 def _progress(done: int, total: int, started: float, what: str) -> None:
@@ -202,6 +212,25 @@ def _assign_groups(
     return [f"simgroup-{int(label):05d}" for label in labels]
 
 
+def _reviewed_edges(
+    candidates: pd.DataFrame, settings: PrepareSettings
+) -> tuple[list[tuple[int, int]], str]:
+    """Reviewed same-field pairs (ADR-0005) as index pairs into ``candidates``."""
+    if settings.reviewed_duplicates is None:
+        return [], "disabled"
+    try:
+        edges, status = resolve_pairs(
+            settings.reviewed_duplicates,
+            candidates["original_path"].tolist(),
+            candidates["sha256"].tolist(),
+            [int(v) for v in candidates["label"]],
+        )
+    except ReviewedDuplicatesError as exc:
+        raise PrepareError(str(exc)) from exc
+    logger.info("reviewed duplicate list (ADR-0005): %s", status)
+    return edges, status
+
+
 def protocol_tiling(max_tissue_threshold: int | None = None) -> TilingParams:
     """Tiling parameters from configs/protocol.yaml (O5 + ADR-0002). ``max_tissue_threshold``
     overrides the protocol's cap (ablations only; 255 = plain Otsu)."""
@@ -220,9 +249,12 @@ def protocol_tiling(max_tissue_threshold: int | None = None) -> TilingParams:
 
 
 def settings_record(settings: PrepareSettings) -> dict[str, Any]:
+    """JSON-ready settings (tuples become lists), so a record read back from dataset.json compares
+    equal to a freshly built one."""
     record = asdict(settings)
     record["tiling"] = asdict(settings.tiling)
-    return record
+    roundtrip: dict[str, Any] = json.loads(json.dumps(record))
+    return roundtrip
 
 
 def prepare(
@@ -279,7 +311,8 @@ def prepare(
         # Duplicate clusters among the originals (exact copies have distance 0).
         positions = np.flatnonzero(candidates)
         distances = min_distances(hashes[positions])
-        dup_labels = clusters(distances, settings.duplicate_threshold)
+        reviewed_edges, reviewed_status = _reviewed_edges(manifest.loc[positions], settings)
+        dup_labels = clusters(distances, settings.duplicate_threshold, reviewed_edges)
         manifest["duplicate_cluster"] = None
         manifest.loc[positions, "duplicate_cluster"] = [f"dup-{int(c):05d}" for c in dup_labels]
         # ADR-0003: a duplicate cluster whose members carry both labels has no trustworthy label
@@ -394,6 +427,7 @@ def prepare(
                     "source": fingerprint,
                     "settings": settings_record(settings),
                     **_selection_counts(manifest, conflicts, settings),
+                    "reviewed_duplicates_status": reviewed_status,
                     "created_at": iso(utc_now()),
                     "seconds": round(time.perf_counter() - started, 1),
                     "leakage_test": "passed",
@@ -491,6 +525,7 @@ def prepare(
                 "seconds": round(time.perf_counter() - started, 1),
                 "leakage_test": "passed",
                 **_conflict_counts(conflicts),
+                "reviewed_duplicates_status": reviewed_status,
             },
         )
     if out.exists():
@@ -578,6 +613,7 @@ def print_manifest_only(info: dict[str, Any]) -> None:
         "n_kept_images",
         "n_groups",
         "largest_group",
+        "reviewed_duplicates_status",
     ):
         print(f"  {key}: {info[key]}")
     for split in SPLITS:
