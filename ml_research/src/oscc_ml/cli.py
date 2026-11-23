@@ -269,18 +269,57 @@ def report_command(
         typer.Option(help="Also copy the Markdown table here, e.g. docs/results/baseline_fyp1.md"),
     ] = None,
     seed: Annotated[int, typer.Option()] = 42,
+    dataset_info: Annotated[
+        Path | None,
+        typer.Option(
+            help="dataset.json (prepare) or extraction.json (tabular) for the dataset table; "
+            "default: the prepared dataset, else the tabular extraction"
+        ),
+    ] = None,
+    docs_dir: Annotated[
+        Path | None,
+        typer.Option(
+            help="Also copy MODEL_SELECTION.md, FYP1_RESULTS_TEMPLATE.md, cost.md, dataset.md "
+            "and figures/ here, e.g. ../docs/results"
+        ),
+    ] = None,
 ) -> None:
-    """Baseline table built only from run folders (smoke and synthetic runs are refused)."""
+    """Baseline table and the FYP-I results package (model selection, cost, dataset, figures,
+    results template), built only from run folders (smoke and synthetic runs are refused)."""
+    import shutil
+
     from oscc_ml.report import ReportRefusedError, build_report
 
+    if dataset_info is None:
+        for candidate in (
+            DEFAULT_DATA_ROOT / "dataset.json",
+            DEFAULT_DATA_ROOT.parent / "tabular" / "extraction.json",
+        ):
+            if candidate.is_file():
+                dataset_info = candidate
+                break
     try:
-        paths = build_report(runs_dir, out_dir or runs_dir / REPORT_DIR_NAME, seed=seed)
+        paths = build_report(
+            runs_dir, out_dir or runs_dir / REPORT_DIR_NAME, seed=seed, dataset_info=dataset_info
+        )
     except ReportRefusedError as exc:
         raise _fail(str(exc)) from exc
     if copy_to is not None:
         copy_to.parent.mkdir(parents=True, exist_ok=True)
         copy_to.write_text(paths["markdown"].read_text("utf-8"), "utf-8")
         typer.echo(f"copied: {copy_to}")
+    if docs_dir is not None:
+        docs_dir.mkdir(parents=True, exist_ok=True)
+        for key in ("model_selection", "results_template", "cost", "dataset"):
+            if key in paths:
+                shutil.copyfile(paths[key], docs_dir / paths[key].name)
+        figs = paths.get("figures")
+        if figs is not None and figs.is_dir():
+            target = docs_dir / "figures"
+            target.mkdir(exist_ok=True)
+            for fig in sorted(figs.glob("*.png")):
+                shutil.copyfile(fig, target / fig.name)
+        typer.echo(f"copied the results package to {docs_dir}")
     for kind, path in paths.items():
         typer.echo(f"{kind}: {path}")
 
