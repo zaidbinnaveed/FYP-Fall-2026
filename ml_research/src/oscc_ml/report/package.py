@@ -166,7 +166,9 @@ def template_lines(
         "",
         "See `MODEL_SELECTION.md`. Summary line:",
         "",
-        next((x for x in selection_text.splitlines() if x.startswith("**Selected")), NOT_YET_RUN),
+        next(
+            (x for x in selection_text.splitlines() if "Selected under the rule" in x), NOT_YET_RUN
+        ),
         "",
         "## 6. Status",
         "",

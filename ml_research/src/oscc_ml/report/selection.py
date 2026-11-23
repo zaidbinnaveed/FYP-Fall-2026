@@ -35,6 +35,15 @@ def _f(value: Any, fmt: str = ".3f") -> str:
     return "n/a" if value is None else format(value, fmt)
 
 
+def p_text(entry: dict[str, Any]) -> str:
+    """A bootstrap p-value of 0 only means no resample crossed zero; say so instead of "0"."""
+    p = float(entry["p_holm"])
+    n = int(entry.get("n_valid") or entry.get("n_resamples") or 0)
+    if p == 0 and n:
+        return f"~0 (no bootstrap resample of {n} crossed zero)"
+    return f"{p:.3g}"
+
+
 def rank(evaluations: dict[str, dict[str, Any]]) -> list[str]:
     """Architectures ordered by the SDS rule: test AUC (rounded to TIE_DECIMALS) desc, then test
     recall desc, then name (deterministic)."""
@@ -117,7 +126,8 @@ def render(
         f"- **One seed ({seed}) in FYP-I.** These are baselines. The final choice is made in "
         "FYP-II with 3 seeds (42, 43, 44) and the paired tests below.",
         "",
-        f"**Selected under the rule: {DISPLAY_NAME.get(chosen, chosen)}** "
+        ("**Provisional (image models not yet run).** " if missing else "")
+        + f"**Selected under the rule: {DISPLAY_NAME.get(chosen, chosen)}** "
         f"(test AUC {_ci(evaluations[chosen]['test']['auc_roc'])}, recall "
         f"{_ci(evaluations[chosen]['test']['recall'])}).",
         "",
@@ -178,7 +188,7 @@ def render(
                 b, c = c, b
             lines.append(
                 f"| {DISPLAY_NAME.get(arch, arch)} | {sign * d['estimate']:+.3f} {ci} | "
-                f"{d['p_holm']:.3g} | {b} / {c} | {m['p_holm']:.3g} |"
+                f"{p_text(d)} | {b} / {c} | {m['p_holm']:.3g} |"
             )
     lines += [
         "",
@@ -250,8 +260,8 @@ def render(
             d = pair["delta_auc"]
             significant = d["p_holm"] < 0.05
             reason += (
-                f"; the paired difference {sign * d['estimate']:+.3f} has Holm p = "
-                f"{d['p_holm']:.3g}, so it is "
+                f"; the paired difference {sign * d['estimate']:+.3f} has Holm p "
+                f"{'' if p_text(d).startswith('~') else '= '}{p_text(d)}, so it is "
                 + ("statistically significant" if significant else "NOT statistically significant")
                 + " at 0.05"
                 + ("" if significant else " (with one seed, the two cannot be told apart)")
