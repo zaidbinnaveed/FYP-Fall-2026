@@ -163,7 +163,9 @@ def run_journal_lines(run_dir: Path) -> list[str]:
         "`observations/training_summary.json`._",
         "",
     ]
-    if not log and not epochs:
+    if info.get("model_type") == "tabular":
+        lines += _tabular_training_lines(metrics)
+    elif not log and not epochs:
         lines += [
             "No epoch was logged (training has not run or stopped before the first epoch).",
             "",
@@ -203,7 +205,7 @@ def run_journal_lines(run_dir: Path) -> list[str]:
         for message in warned:
             lines.append(f"  - warning seen: {message}")
         lines.append("")
-    else:
+    elif info.get("model_type") != "tabular":
         lines += ["`observations/training_summary.json` is not present.", ""]
 
     if metrics:
@@ -265,6 +267,34 @@ def run_journal_lines(run_dir: Path) -> list[str]:
             f"- Evaluated at {evaluation.get('evaluated_at', 'n/a')}.",
             "",
         ]
+    return lines
+
+
+def _tabular_training_lines(metrics: dict[str, Any] | None) -> list[str]:
+    """Tabular runs have no epochs: the journal shows the grouped-CV tuning instead."""
+    tuning = (metrics or {}).get("tuning") or {}
+    if not tuning:
+        return ["`metrics.json` has no tuning record.", ""]
+    lines = [
+        f"Tuning: {tuning.get('method', 'n/a')}.",
+        "",
+        "| Rank | Setting | Mean CV AUC | SD |",
+        "| ---: | --- | ---: | ---: |",
+    ]
+    for row in sorted(tuning.get("cv_results") or [], key=lambda r: r.get("rank", 0)):
+        setting = ", ".join(f"{k}={v}" for k, v in sorted((row.get("params") or {}).items()))
+        lines.append(
+            f"| {row.get('rank')} | {setting} | {_num(row.get('mean_cv_auc'))} | "
+            f"{_num(row.get('std_cv_auc'))} |"
+        )
+    best = ", ".join(f"{k}={v}" for k, v in sorted((tuning.get("best_params") or {}).items()))
+    lines += [
+        "",
+        f"- **Chosen setting:** {best} (highest mean grouped-CV AUC on train, "
+        f"{_num(tuning.get('best_mean_cv_auc'))}); refitted on all of train.",
+        f"- Features used: {(metrics or {}).get('n_features', 'n/a')}.",
+        "",
+    ]
     return lines
 
 

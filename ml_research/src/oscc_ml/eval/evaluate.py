@@ -225,6 +225,8 @@ def evaluate_all(
         info = read_json(info_path)
         if info.get("purpose") != "train" or info.get("status") != "completed":
             continue
+        if info.get("model_type") == "tabular":
+            continue  # evaluated by `oscc-ml tabular-train` itself (no checkpoint)
         if (run_dir / EVALUATION_FILE).is_file() and not force:
             logger.info("%s: already evaluated, skipping", run_dir.name)
             done.append(run_dir)
