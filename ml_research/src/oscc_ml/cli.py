@@ -226,8 +226,17 @@ def evaluate_command(
     gpu: Annotated[bool, typer.Option(help="Also measure GPU latency if a GPU exists")] = True,
     force: Annotated[bool, typer.Option(help="Re-evaluate runs that already have results")] = False,
     config_dir: ConfigDir = None,
+    data_root: Annotated[
+        Path | None,
+        typer.Option(help="Prepared dataset for the test predictions (default: from run_info)"),
+    ] = None,
+    device: Annotated[
+        str, typer.Option(help="auto, cpu or cuda (use the training device)")
+    ] = "auto",
 ) -> None:
-    """Test metrics with grouped bootstrap CIs, tau from validation, params, GFLOPs, latency."""
+    """Test predictions from best.pt (the only step that reads the test split), tau from
+    validation, test metrics with grouped bootstrap CIs, calibration, errors, paired model
+    comparisons, params, GFLOPs, latency."""
     from oscc_ml.eval.evaluate import evaluate_all
 
     _setup_logging()
@@ -239,6 +248,8 @@ def evaluate_command(
         latency_runs=latency_runs,
         measure_gpu=gpu,
         config_dir=config_dir,
+        data_root=data_root,
+        device=device,
     )
     typer.echo(f"evaluated: {len(done)} run(s)")
     for failure in failed:

@@ -66,3 +66,39 @@ def outcome_counts(
     for label, prob in zip(labels, probabilities, strict=True):
         table["oscc" if label == 1 else "non_oscc"][outcome(prob, threshold, margin)] += 1
     return table
+
+
+def threshold_curve(
+    labels: Sequence[int], probabilities: Sequence[float], target_recall: float
+) -> list[dict[str, Any]]:
+    """The validation curve tau is chosen from: one row per candidate threshold (every distinct
+    probability, ascending) with its confusion counts, precision, recall, specificity, F1 and
+    whether it reaches the target recall. Same candidates and formulas as
+    :func:`calibrate_threshold`."""
+    y = np.asarray(labels, dtype=int)
+    p = np.asarray(probabilities, dtype=float)
+    rows: list[dict[str, Any]] = []
+    for t in np.unique(p):
+        pred = p >= t
+        tp = int((pred & (y == 1)).sum())
+        fp = int((pred & (y == 0)).sum())
+        fn = int((~pred & (y == 1)).sum())
+        tn = int((~pred & (y == 0)).sum())
+        recall = tp / (tp + fn) if tp + fn else 0.0
+        precision = tp / (tp + fp) if tp + fp else 0.0
+        f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+        rows.append(
+            {
+                "threshold": float(t),
+                "tp": tp,
+                "fp": fp,
+                "fn": fn,
+                "tn": tn,
+                "precision": precision,
+                "recall": recall,
+                "specificity": tn / (tn + fp) if tn + fp else None,
+                "f1": f1,
+                "meets_target_recall": recall >= target_recall,
+            }
+        )
+    return rows

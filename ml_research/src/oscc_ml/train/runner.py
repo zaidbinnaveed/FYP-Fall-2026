@@ -31,7 +31,7 @@ from typing import Any, Literal
 import torch
 import yaml
 
-from oscc_ml import __version__
+from oscc_ml import __version__, journal
 from oscc_ml.config import ResolvedConfig, resolve
 from oscc_ml.data.datasets import EvalTransform, TrainTransform
 from oscc_ml.data.processed import MemmapPatchDataset, read_dataset_info
@@ -272,6 +272,7 @@ def _execute(
             write_json(run_dir / "run_info.json", info)
             logger.exception("%s failed", cfg.architecture)
             raise
+    journal.safely(journal.write_run_journal, run_dir)
     return run_dir
 
 
@@ -334,12 +335,11 @@ def _train_and_predict(
         "threshold_note": "fixed 0.5, uncalibrated; see evaluation.json for tau from validation",
         "primary_unit": "image (mean of patch probabilities)",
     }
-    # The LR sweep selects on validation only; it never computes test predictions.
-    splits = ("val",) if run.purpose == "sweep" else ("val", "test")
-    for split in splits:
-        dataset = (
-            val_ds if split == "val" else MemmapPatchDataset(data_root, split, val_ds.transform)
-        )
+    # Training never opens the test split (audit M2): test predictions are made by
+    # `oscc-ml evaluate` from checkpoints/best.pt. Only validation predictions are written here.
+    metrics["test_predictions"] = "made by `oscc-ml evaluate` from checkpoints/best.pt"
+    for split in ("val",):
+        dataset = val_ds
         loader = make_loader(
             dataset, run.batch_size, False, run.num_workers, epoch_generator(run.seed, 0)
         )

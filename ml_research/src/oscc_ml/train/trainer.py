@@ -12,6 +12,7 @@ AMP scaler, early-stopping state, history and RNG states. Shuffling is reseeded 
 from __future__ import annotations
 
 import csv
+import json
 import logging
 import math
 import random
@@ -27,6 +28,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 
+from oscc_ml import observe
 from oscc_ml.config import ResolvedConfig
 from oscc_ml.data.processed import MemmapPatchDataset
 from oscc_ml.eval.metrics import aggregate_to_images, auc_or_none
@@ -226,6 +228,9 @@ def train(
     )
     started = time.perf_counter()
     stopped_early = bool(history) and stale_epochs >= patience
+    # Observation record (Phase 2A): read-only hooks, switched off entirely by observe.ENABLED.
+    obs_dir = run_dir / observe.OBSERVATIONS_DIR
+    tracker = observe.GradNormTracker()
 
     with log_path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=LOG_COLUMNS)
@@ -237,83 +242,114 @@ def train(
         epoch = start_epoch
         while epoch <= run.epochs and not stopped_early:
             epoch_start = time.perf_counter()
-            lr = optimizer.param_groups[0]["lr"]
-            train_loader = make_loader(
-                train_ds,
-                run.batch_size,
-                True,
-                run.num_workers,
-                epoch_generator(run.seed, epoch),
-                pin,
-            )
-            model.train()
-            running, seen = 0.0, 0
-            for x, y, _ in train_loader:
-                x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
-                optimizer.zero_grad(set_to_none=True)
-                with torch.autocast(device_type=device.type, enabled=use_amp):
-                    logits = model(x).squeeze(1)
-                loss = loss_fn(logits.float(), y)
-                scaler.scale(loss).backward()
-                scaler.step(optimizer)
-                scaler.update()
-                running += float(loss.detach()) * len(y)
-                seen += len(y)
-            scheduler.step()
+            non_finite, n_batches = 0, 0
+            with observe.capture_warnings(observe.ENABLED) as messages:
+                lr = optimizer.param_groups[0]["lr"]
+                train_loader = make_loader(
+                    train_ds,
+                    run.batch_size,
+                    True,
+                    run.num_workers,
+                    epoch_generator(run.seed, epoch),
+                    pin,
+                )
+                model.train()
+                running, seen = 0.0, 0
+                for x, y, _ in train_loader:
+                    x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
+                    optimizer.zero_grad(set_to_none=True)
+                    with torch.autocast(device_type=device.type, enabled=use_amp):
+                        logits = model(x).squeeze(1)
+                    loss = loss_fn(logits.float(), y)
+                    scaler.scale(loss).backward()
+                    if observe.ENABLED:
+                        tracker.add(model, scaler.get_scale() if scaler.is_enabled() else 1.0)
+                    scaler.step(optimizer)
+                    scaler.update()
+                    loss_value = float(loss.detach())
+                    running += loss_value * len(y)
+                    seen += len(y)
+                    n_batches += 1
+                    non_finite += 0 if math.isfinite(loss_value) else 1
+                scheduler.step()
 
-            val_patches, val_loss = predict(model, val_loader, val_ds, device, use_amp, loss_fn)
-            val_images = aggregate_to_images(val_patches)
-            val_auc = auc_or_none(
-                val_images["label"].tolist(), val_images["oscc_probability"].tolist()
-            )
-            improved = val_auc is not None and (best_auc is None or val_auc > best_auc)
-            if improved or not best_path.is_file():
-                # The first epoch always writes best.pt so a run never ends without one.
-                if improved:
-                    best_auc = val_auc
-                best_epoch = epoch
+                val_patches, val_loss = predict(model, val_loader, val_ds, device, use_amp, loss_fn)
+                val_images = aggregate_to_images(val_patches)
+                val_auc = auc_or_none(
+                    val_images["label"].tolist(), val_images["oscc_probability"].tolist()
+                )
+                improved = val_auc is not None and (best_auc is None or val_auc > best_auc)
+                if improved or not best_path.is_file():
+                    # The first epoch always writes best.pt so a run never ends without one.
+                    if improved:
+                        best_auc = val_auc
+                    best_epoch = epoch
+                    torch.save(
+                        {
+                            "state_dict": model.state_dict(),
+                            "epoch": epoch,
+                            "val_auc": val_auc,
+                            **checkpoint_meta,
+                        },
+                        best_path,
+                    )
+                stale_epochs = 0 if improved else stale_epochs + 1
+
+                seconds = time.perf_counter() - epoch_start
+                row = {
+                    "epoch": epoch,
+                    "lr": lr,
+                    "train_loss": running / max(seen, 1),
+                    "val_loss": val_loss,
+                    "val_auc": val_auc,
+                    "epoch_seconds": round(seconds, 3),
+                }
+                writer.writerow(row)
+                handle.flush()
+                history.append(row)
+                stopped_early = stale_epochs >= patience
+                finished = stopped_early or epoch == run.epochs
                 torch.save(
                     {
-                        "state_dict": model.state_dict(),
+                        "model": model.state_dict(),
+                        "optimizer": optimizer.state_dict(),
+                        "scheduler": scheduler.state_dict(),
+                        "scaler": scaler.state_dict(),
                         "epoch": epoch,
-                        "val_auc": val_auc,
-                        **checkpoint_meta,
+                        "best_auc": best_auc,
+                        "best_epoch": best_epoch,
+                        "stale_epochs": stale_epochs,
+                        "history": history,
+                        "elapsed_seconds": elapsed_before + time.perf_counter() - started,
+                        "rng": _rng_state(),
+                        "finished": finished,
                     },
-                    best_path,
+                    last_path,
                 )
-            stale_epochs = 0 if improved else stale_epochs + 1
-
-            seconds = time.perf_counter() - epoch_start
-            row = {
-                "epoch": epoch,
-                "lr": lr,
-                "train_loss": running / max(seen, 1),
-                "val_loss": val_loss,
-                "val_auc": val_auc,
-                "epoch_seconds": round(seconds, 3),
-            }
-            writer.writerow(row)
-            handle.flush()
-            history.append(row)
-            stopped_early = stale_epochs >= patience
-            finished = stopped_early or epoch == run.epochs
-            torch.save(
-                {
-                    "model": model.state_dict(),
-                    "optimizer": optimizer.state_dict(),
-                    "scheduler": scheduler.state_dict(),
-                    "scaler": scaler.state_dict(),
-                    "epoch": epoch,
-                    "best_auc": best_auc,
-                    "best_epoch": best_epoch,
-                    "stale_epochs": stale_epochs,
-                    "history": history,
-                    "elapsed_seconds": elapsed_before + time.perf_counter() - started,
-                    "rng": _rng_state(),
-                    "finished": finished,
-                },
-                last_path,
-            )
+            if observe.ENABLED:
+                for message in messages:
+                    logger.warning("%s epoch %d: %s", cfg.architecture, epoch, message)
+                observe.append_jsonl(
+                    obs_dir / observe.EPOCHS_FILE,
+                    {
+                        **row,
+                        **observe.validation_metrics(
+                            val_images["label"].tolist(), val_images["oscc_probability"].tolist()
+                        ),
+                        "val_n_images": len(val_images),
+                        "improved": improved,
+                        "stale_epochs": stale_epochs,
+                        "best_epoch_so_far": best_epoch,
+                        "best_val_auc_so_far": best_auc,
+                        "n_batches": n_batches,
+                        "non_finite_loss_batches": non_finite,
+                        "grad_norm": tracker.summary(),
+                        "peak_gpu_memory_mb_so_far": observe.peak_gpu_memory_mb(device),
+                        "warnings": messages,
+                        "first_epoch_after_resume": resumed_from is not None
+                        and epoch == start_epoch,
+                    },
+                )
             remaining = (run.epochs - epoch) * seconds
             logger.info(
                 "%s seed %d | epoch %d/%d | loss %.4f | val AUC %s | %.1f s/epoch | ETA <= %s",
@@ -329,6 +365,39 @@ def train(
             epoch += 1
 
     peak = torch.cuda.max_memory_allocated(device) / 2**20 if device.type == "cuda" else None
+    if observe.ENABLED:
+        # Totals come from epochs.jsonl (appended after every saved epoch), so epochs from before
+        # an interruption are counted too.
+        epochs_path = obs_dir / observe.EPOCHS_FILE
+        lines = (
+            [json.loads(x) for x in epochs_path.read_text("utf-8").splitlines() if x.strip()]
+            if epochs_path.is_file()
+            else []
+        )
+        observe.write_json_file(
+            obs_dir / observe.SUMMARY_FILE,
+            {
+                "architecture": cfg.architecture,
+                "seed": run.seed,
+                "lr": run.lr,
+                "max_epochs": run.epochs,
+                "patience": patience,
+                "epochs_run": len(history),
+                "best_epoch": best_epoch,
+                "best_val_auc": best_auc,
+                "stop_epoch": history[-1]["epoch"] if history else None,
+                "stopped_early": stopped_early,
+                "stop_reason": observe.stop_reason(
+                    stopped_early, patience, len(history), run.epochs
+                ),
+                "resumed_at_epochs": [x["epoch"] for x in lines if x["first_epoch_after_resume"]],
+                "warnings": sum(len(x["warnings"]) for x in lines),
+                "non_finite_loss_batches": sum(x["non_finite_loss_batches"] for x in lines),
+                "peak_gpu_memory_mb": peak,
+                "epoch_metrics_threshold": observe.UNCALIBRATED,
+                "checkpoint_rule": "best.pt = epoch with the highest validation image-level AUC",
+            },
+        )
     return TrainResult(
         best_epoch=best_epoch,
         best_val_auc=best_auc,

@@ -11,6 +11,7 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from oscc_ml import journal, observe
 from oscc_ml.catalog import ALL_ARCHITECTURES
 from oscc_ml.data.processed import read_dataset_info
 from oscc_ml.train.runner import run_training
@@ -90,9 +91,13 @@ def train_all(
                     resume=resume,
                 )
                 result.completed.append(run_dir)
+                observe.record_training_decision(runs_dir, run_dir)
+                journal.safely(journal.write_run_journal, run_dir)
             except KeyboardInterrupt:
                 raise
             except Exception as exc:
                 logger.exception("training %s seed %d failed", model, seed)
                 result.failed.append(f"{model} seed {seed}: {type(exc).__name__}: {exc}")
+    observe.snapshot_environment(runs_dir, device)
+    journal.safely(journal.write_pipeline_journal, runs_dir)
     return result
