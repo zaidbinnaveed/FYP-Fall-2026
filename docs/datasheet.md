@@ -64,3 +64,23 @@ Images of one patient can therefore appear in both training and test. Test metri
 - The limitation is stated in every report that uses this split.
 - The Multi-OSCC external test set (positives only) gives a check on data from other patients.
 - If patient or slide identifiers are found later (for example in the Mendeley release): when they are part of the file path, `prepare --group-regex` groups by them without code changes; a separate mapping file would need a small addition to `prepare`.
+
+## Tabular feature dataset (`oscc_features_v1.csv`, Phase T, ADR-0006)
+
+- **What:** one row per kept image (1,179 rows) with the manifest's `image_id`, `split`, `label`,
+  `magnification`, `group_id`, the original size (metadata) and 69 measured columns: colour (RGB,
+  HSV, L\*a\*b\*), H&E stain optical density, texture (GLCM, LBP) and nuclei-density proxies. Every
+  column is defined in [`results/TABULAR_DATA_DICTIONARY.md`](results/TABULAR_DATA_DICTIONARY.md).
+- **How:** `oscc-ml tabular-extract --manifest <prepare manifest.csv> --raw <raw folder>`, streamed,
+  one image at a time; SHA-256 and size of each image are checked against the manifest. Features are
+  measured on a 4x4 box-downsized copy inside the ADR-0002 tissue mask.
+- **Same split, no new one:** the split columns are copied from the manifest and re-checked
+  (`oscc-ml tabular-check`).
+- **Not features:** magnification and image size (metadata; an ablation adds magnification).
+  Non-pathology cues (file/JPEG properties, whole-frame colour histogram) are in a separate file,
+  `oscc_shortcut_cues_v1.csv`, used only by the shortcut check.
+- **Limitations:** nuclei counts are proxies at reduced resolution, not a segmentation; the
+  Ruifrok-Johnston stain vectors are generic (eosin values on these bluish images are small and can be
+  slightly negative); handcrafted features cannot capture tissue architecture as fully as a CNN/ViT.
+- **Files are gitignored** (derived data); the SHA-256 of each file is in `extraction.json` and in
+  the Phase T record.
