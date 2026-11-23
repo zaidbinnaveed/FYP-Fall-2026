@@ -1,0 +1,6 @@
+# Research report copied by `npm run sync-report` (generated from run folders; never committed)
+public/report/
+
+# Playwright output
+test-results/
+playwright-report/
