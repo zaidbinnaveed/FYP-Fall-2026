@@ -11,6 +11,21 @@ They meet at the **model registry**: research exports weights + metrics → admi
 
 ---
 
+## FYP-I non-negotiable requirements (evaluation 6 Dec 2026)
+
+Supervisor's requirements, verbatim (record and mapping: `docs/SCOPE_CHANGE_FYP1.md`):
+
+> "Classification models 3nu. CNN ViT LLMs. And a working mock UI.
+>  1. Complete dataset (tabular and images). 2. Working classification models. 3. UI: Accepted with minor changes.
+>  Student must have a clear concept of using tabulated data and computer vision based image classification for their project."
+
+- **Images + CNN/ViT:** pipeline done; training runs on the university GPU (`docs/UNI_RUNBOOK.md`).
+- **Tabular dataset + classical classifiers:** approved (proposed FR-7.11, errata E16). Same images and the existing split; scikit-learn only; τ from validation; test used once.
+- **LLM: on hold.** Build nothing LLM-related until the team says otherwise (errata E18).
+- **Working mock UI:** React + TypeScript, fixture data in separate files, "Demo mode" banner, fictional hospitals only; supervisor's minor changes applied when received (errata E17).
+
+---
+
 ## 1. Source documents (read before writing code)
 
 | File | What it is | Use it for |
@@ -76,7 +91,7 @@ Figures are PNGs; open them (ERDs, sequence and state diagrams) when implementin
 - Binary task, single logit, `BCEWithLogitsLoss` with `pos_weight` from the training class ratio.
 - **One protocol file** `configs/protocol.yaml` (SDS Appendix A): 224×224 patches · ImageNet mean/std · train-only aug (h/v flips, 90° rotations, mild colour jitter) · AdamW identical settings · LR from a shared sweep {1e-5, 3e-5, 1e-4, 3e-4, 1e-3} · batch 32 · max 50 epochs, early stopping on val AUC, patience 7 · AMP · seed 42. Per-model configs may set **only** the architecture name; a test enforces this.
 - **One preprocessing module** `oscc_ml.preprocess` (tiling, tissue filter, normalization, optional stain normalization, H&E check) used by **both** training and the inference service. A parity test (same image → identical tensor and probability) must stay green.
-- **Data (plan §3):** the primary benchmark uses the Kaggle/Rahman dataset rebuilt from original images (augmented copies removed via pHash). Split 70:15:15, seed 42, grouped by patient (or duplicate cluster if no patient IDs — documented as a deviation). No sha256, pHash cluster or patient may appear in two splits. **Multi-OSCC is OSCC-only: use it only as an external positive test set, never as training data in the primary benchmark.**
+- **Data (plan §3):** the primary benchmark uses the Kaggle/Rahman dataset rebuilt from original images (publisher augmented copies `aug_*` excluded by name; duplicates removed by SHA-256 + pHash ≤ 4 plus a reviewed list, ADR-0005). Split 70:15:15, seed 42, grouped by patient (or, with no patient IDs, by pHash similarity groups at distance ≤ 10 — documented deviation, errata E7). No sha256, pHash cluster or patient may appear in two splits. **Multi-OSCC is OSCC-only: use it only as an external positive test set, never as training data in the primary benchmark.**
 - **Evaluation:** image level (mean of patch probabilities) is primary. 95% bootstrap CIs resampling patients/groups. Paired bootstrap ΔAUC + McNemar at τ, Holm correction. Cost: params, GFLOPs (`torch.utils.flop_counter`), CPU/GPU latency (batch 1, warm-up), peak memory, training time.
 - **Threshold τ:** on validation, the threshold with max F1 among those reaching target recall (default 0.95); margin m default 0.05 (plan decisions O2/O3).
 - Each run writes `runs/<timestamp>_<model>_<seed>/` with resolved config, git commit, `dataset_version`, logs, best checkpoint, val/test predictions and metrics JSON. Reports are regenerated only from these folders.

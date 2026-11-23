@@ -1,8 +1,11 @@
 # FYP-I deliverables: evidence and status
 
-Status as of 22 Nov 2026 (`main` at `567a935`). The university GPU run has **not** happened yet, so
-no trained-model result exists anywhere in this repository. Audit details:
-[`docs/audit/FYP1_COMPLIANCE_AUDIT.md`](audit/FYP1_COMPLIANCE_AUDIT.md).
+Status as of 23 Nov 2026 (Phase 2A PR (C); `main` at `567a935`, Phase 2A PRs #23–#25 open). The
+university GPU run has **not** happened yet, so no trained CNN/ViT result exists anywhere in this
+repository. Audit details: [`docs/audit/FYP1_COMPLIANCE_AUDIT.md`](audit/FYP1_COMPLIANCE_AUDIT.md).
+**Scope change (23 Nov 2026):** the supervisor's FYP-I requirements add a tabular dataset with
+classical classifiers and a working mock UI, and put the LLM on hold
+([`SCOPE_CHANGE_FYP1.md`](SCOPE_CHANGE_FYP1.md), rows 7–9 below).
 
 ## What FYP-I is
 
@@ -30,12 +33,15 @@ Status values: **done** · **done (open PR)** = built and CI-green but not merge
 | 4b | Dataset cleaning (augmented-copy exclusion, dedup, label conflicts, grouped split, leakage test) | `oscc-ml prepare` (PR #11), ADR-0003 hotfix (PR #20). `prepare --manifest-only` on the full data with ADR-0005 (duplicate threshold 4 + reviewed same-field list): 1,179 kept, 829/174/176, leakage test passed; reproduced independently by `scripts/audit/verify_dataset_independent.py` (46/46 checks, 2 identical runs) | done; final `dataset.json` is **pending uni run** (patch pass) |
 | 4c | Preprocessing (patch extraction, tissue filter, augmentation) | `oscc_ml.preprocess` (tiling, O5 + ADR-0002), `data/datasets.py` (train-only augmentation, verified in `tests/audit/test_evaluation_hygiene.py`), `docs/results/tissue_filter_check.png` (sample) | done; full patch extraction **pending uni run** |
 | 4d | Dataset audit report + datasheet (plan R1 steps 3 and 9) | PR #21 (open): `oscc-ml audit` → `docs/results/dataset_audit.md` (**SAMPLE ONLY**), expanded `docs/datasheet.md` (L1–L5). On `main`: datasheet with L1 only | done (open PR) for code; full-data audit report **pending uni run** |
-| 4e | Multi-OSCC external positive set (plan R1 step 6) | Metadata only (`ml_research/data/raw/multi_oscc_github`, PR #21 datasheet). No import code, no `external_positive` split | **missing** (audit M6) |
+| 4e | Multi-OSCC external positive set (plan R1 step 6) | Metadata only (`ml_research/data/raw/multi_oscc_github`, PR #21 datasheet). No import code, no `external_positive` split | **deferred to FYP-II** (audit M6, errata E11) |
 | 4f | H&E colour-profile validator (plan R1 step 8, FR-2.2) | PR #21 (open): `preprocess/he_check.py`, `he-calibrate`, `he-evaluate`, `docs/results/he_check_sample.md` (SAMPLE ONLY) | done (open PR); test-split false-reject **pending uni run**; ~200 real-photo false-accept set **missing** |
 | 5a | Baseline models implemented (ResNet50, EfficientNet-B0, DenseNet121, ViT-B/16) | `oscc_ml.models.factory` (PR #9), identical-protocol test `tests/test_protocol.py` | done |
 | 5b | Baseline training (seed 42, all four) | `oscc-ml sweep`, `train-all`, `evaluate`, `report` (PR #9); `uni_run.{ps1,sh}` + `docs/UNI_RUNBOOK.md` (PRs #11, #22) | **pending uni run** |
 | 5c | Baseline results table (`docs/results/baseline_fyp1.md`, plan R2 acceptance) | `oscc-ml report --copy-to ../docs/results/baseline_fyp1.md` after `import-results` | **pending uni run** (file does not exist) |
-| 6 | Supervisor gate G1 (plan R1 acceptance: "supervisor shown the audit") | No record found in the repo | **missing** (audit B2) |
+| 6 | Supervisor gate G1 (plan R1 acceptance: "supervisor shown the audit") and deviation sign-off | [`audit/SUPERVISOR_SIGNOFF.md`](audit/SUPERVISOR_SIGNOFF.md): G1 line + 11 deviations with tick boxes | sheet ready; **awaiting the supervisor** (audit B2, M7) |
+| 7 | Tabular dataset + classical classifiers (supervisor requirement; proposed FR-7.11) | Phase T: `oscc_ml.tabular`, `data/processed/tabular/oscc_features_v1.csv`, `docs/results/TABULAR_DATA_DICTIONARY.md`, `docs/TABULAR_VS_CV_EXPLAINER.md` | Phase T (in progress) |
+| 8 | Working mock UI (supervisor requirement; errata E17) | Phase U: `frontend/`, `docs/UI_DEMO.md` | Phase U (not started) |
+| 9 | LLM / patient-support chatbot | — | **on hold** (errata E18) |
 
 ## How to reproduce what exists today
 
