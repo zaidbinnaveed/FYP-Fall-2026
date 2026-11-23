@@ -102,7 +102,7 @@ def _record_split_access(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str
 
 
 @pytest.mark.parametrize("purpose", ["train", "sweep"])
-def test_test_split_is_built_only_after_training_and_never_by_the_sweep(
+def test_training_and_the_sweep_never_build_the_test_split(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, config_dir: Path, data_root: Path, purpose: str
 ) -> None:
     log = _record_split_access(monkeypatch)
@@ -123,13 +123,9 @@ def test_test_split_is_built_only_after_training_and_never_by_the_sweep(
     assert ("train", "TrainTransform") in built
     assert all(t == "TrainTransform" for s, t in built if s == "train")
     assert all(t == "EvalTransform" for s, t in built if s in {"val", "test"})
-    end = log.index(("train-end", "", ""))
-    test_events = [i for i, (e, s, _) in enumerate(log) if e == "dataset" and s == "test"]
-    if purpose == "sweep":
-        assert not test_events
-    else:
-        assert test_events
-        assert all(i > end for i in test_events)
+    # audit M2: training (sweep or not) never builds the test split; evaluate does
+    assert not [s for e, s, _ in log if e == "dataset" and s == "test"]
+    assert ("train-end", "", "") in log
 
 
 # ----------------------------------------------------------------------------- tau

@@ -133,6 +133,36 @@ def test_evaluation_has_ci_threshold_and_cost(pipeline: Path) -> None:
         assert ev["cost"]["gflops_per_patch"] > 0.1
         assert ev["cost"]["latency_cpu"]["mean_ms"] > 0
         assert set(ev["test_by_magnification"]) == {"100x", "400x"}
+        assert ev["test_predictions"]["source"] == "checkpoints/best.pt"
+        assert (path.parent / ev["validation_threshold_curve"]).is_file()
+        assert "ece" in ev["calibration"]["test"]
+
+
+def test_observation_record_and_decisions(pipeline: Path) -> None:
+    """Phase 2A: per-epoch records, the sweep's LR reasons, one decision per run, tau per run and
+    the paired comparisons, plus the environment snapshot."""
+    chosen = json.loads(chosen_lr_path(pipeline).read_text("utf-8"))
+    assert [d["decision"] for d in chosen["lr_decisions"]].count("chosen") == 1
+    assert all(d["reason"] for d in chosen["lr_decisions"])
+    assert {t["per_epoch_record"].split("/")[0] for t in chosen["trials"]} == {
+        p.parent.name for p in (pipeline / "sweep").glob("*/run_info.json")
+    }
+    decisions = [
+        json.loads(x) for x in (pipeline / "decisions.jsonl").read_text("utf-8").splitlines()
+    ]
+    steps = [d["step"] for d in decisions]
+    assert steps.count("sweep") == len(TEST_GRID)
+    assert steps.count("train") == len(ALL_ARCHITECTURES)
+    assert steps.count("evaluate") == len(ALL_ARCHITECTURES)
+    assert steps.count("compare") == 6  # 4 models -> 6 pairs
+    comparisons = json.loads((pipeline / "comparisons.json").read_text("utf-8"))
+    pairs = comparisons["seeds"]["42"]
+    assert len(pairs) == 6
+    assert all(0.0 <= p["delta_auc"]["p_holm"] <= 1.0 for p in pairs)
+    assert (pipeline / "environment.json").is_file()
+    for run in pipeline.glob("*/run_info.json"):
+        summary = json.loads((run.parent / "observations/training_summary.json").read_text())
+        assert summary["epochs_run"] >= 1
 
 
 def test_cli_report_refuses_synthetic_and_noncompliant_runs(pipeline: Path) -> None:
@@ -182,6 +212,14 @@ def test_pack_and_import_roundtrip(pipeline: Path, tmp_path: Path) -> None:
     assert any(n.endswith("evaluation.json") for n in names)
     assert any(n.endswith("predictions/test_images.csv") for n in names)
     assert "sweep/chosen_lr.json" in names
+    for extra in ("decisions.jsonl", "environment.json", "comparisons.json"):
+        assert extra in names
+    assert any(n.endswith("observations/epochs.jsonl") for n in names)
+    assert any(n.endswith("val_threshold_curve.csv") for n in names)
+    for journal_name in ("TRAINING_JOURNAL.md", "sweep/TRAINING_JOURNAL.md"):
+        assert journal_name in names
+    run_journals = [n for n in names if n.endswith("/TRAINING_JOURNAL.md") and n.count("/") == 1]
+    assert len(run_journals) >= len(ALL_ARCHITECTURES)
     with zipfile.ZipFile(ckpt) as archive:
         ck_names = [n for n in archive.namelist() if n != MANIFEST]
     assert len(ck_names) == 4
@@ -286,7 +324,49 @@ def test_resume_after_interruption_matches_an_uninterrupted_run(
     pd.testing.assert_frame_equal(
         log.drop(columns="epoch_seconds"), ref_log.drop(columns="epoch_seconds")
     )
-    for name in ("val_images.csv", "test_images.csv"):
+    for name in ("val_patches.csv", "val_images.csv"):
         assert (resumed / "predictions" / name).read_bytes() == (
             reference / "predictions" / name
         ).read_bytes()
+    # training never writes test predictions (audit M2)
+    assert not (resumed / "predictions" / "test_images.csv").exists()
+    # the observation record survives the interruption: 3 epochs, the resume at epoch 3
+    epochs = [
+        json.loads(x)
+        for x in (resumed / "observations" / "epochs.jsonl").read_text("utf-8").splitlines()
+    ]
+    assert [e["epoch"] for e in epochs] == [1, 2, 3]
+    summary = json.loads((resumed / "observations" / "training_summary.json").read_text("utf-8"))
+    assert summary["resumed_at_epochs"] == [3]
+    assert summary["epochs_run"] == 3
+
+
+def test_training_journals_come_only_from_the_logs(pipeline: Path, tmp_path: Path) -> None:
+    """Every sweep trial, training run and the pipeline get a TRAINING_JOURNAL.md whose numbers
+    match the saved files, and regenerating it from copies of those files alone gives the same
+    bytes (no hidden state)."""
+    from oscc_ml import journal
+
+    chosen = json.loads(chosen_lr_path(pipeline).read_text("utf-8"))
+    sweep_text = (pipeline / "sweep" / "TRAINING_JOURNAL.md").read_text("utf-8")
+    assert f"Chosen learning rate: {chosen['chosen_lr']:g}" in sweep_text
+    for trial in (pipeline / "sweep").glob("*/run_info.json"):
+        assert (trial.parent / "TRAINING_JOURNAL.md").is_file()
+    top = (pipeline / "TRAINING_JOURNAL.md").read_text("utf-8")
+    assert "not yet run" not in top.lower()
+    for info_path in pipeline.glob("*/run_info.json"):
+        run = info_path.parent
+        text = (run / "TRAINING_JOURNAL.md").read_text("utf-8")
+        evaluation = json.loads((run / "evaluation.json").read_text("utf-8"))
+        summary = json.loads((run / "observations/training_summary.json").read_text("utf-8"))
+        tau = f"{evaluation['threshold']['threshold']:.6f}"
+        assert f"tau = {tau}" in text
+        assert tau in top
+        assert f"epoch {summary['best_epoch']}" in text
+        assert summary["stop_reason"] in text
+        assert f"{len(pd.read_csv(run / 'train_log.csv'))} epoch(s) are logged" in text
+        copy = tmp_path / run.name
+        shutil.copytree(run, copy, ignore=shutil.ignore_patterns("checkpoints"))
+        (copy / "TRAINING_JOURNAL.md").unlink()
+        rebuilt = journal.write_run_journal(copy).read_bytes()
+        assert rebuilt == (run / "TRAINING_JOURNAL.md").read_bytes()
