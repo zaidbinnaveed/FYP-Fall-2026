@@ -70,6 +70,16 @@ label well, any model (tabular or CNN) might be using them. The rule was fixed b
 (test AUC ≥ 0.80 = major finding) and the result is published whatever it is, in
 `results/TABULAR_RESULTS.md`.
 
+**Result (23 Nov 2026): the pre-fixed rule flags a MAJOR finding** (see the "Shortcut check" table
+in `results/TABULAR_RESULTS.md`). The whole-frame colour histogram alone predicts the label well;
+file/JPEG properties carry a moderate signal; image size and magnification alone do not. How to
+read it: the whole-frame histogram mixes tissue colour (tumour is more hematoxylin-rich, i.e.
+darker and bluer) with staining, illumination and background, so this check alone cannot say how
+much is a scanner/stain shortcut and how much is real pathology. It does mean that colour is a
+strong cue in this dataset, which every model (tabular, CNN, ViT) can exploit. Follow-ups proposed
+for FYP-II: a background-only (non-tissue pixels) histogram baseline, stain normalisation (plan O4)
+and the external Multi-OSCC test.
+
 ## 6. Likely viva questions
 
 - **Why have a tabular route at all if CNNs are stronger?** It is transparent (named features,
