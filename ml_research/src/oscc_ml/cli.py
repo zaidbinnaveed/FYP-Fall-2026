@@ -559,3 +559,104 @@ def env_command() -> None:
 
 if __name__ == "__main__":
     app()
+
+
+# --------------------------------------------------------------------------------------------------
+# Tabular dataset + classical classifiers (Phase T, proposed FR-7.11)
+# --------------------------------------------------------------------------------------------------
+
+TABULAR_DIR = DEFAULT_DATA_ROOT.parent / "tabular"
+TabularDir = Annotated[
+    Path, typer.Option(help="Folder with oscc_features_v1.csv + extraction.json")
+]
+
+
+@app.command("tabular-extract")
+def tabular_extract_command(
+    manifest: Annotated[Path, typer.Option(help="manifest.csv written by `oscc-ml prepare`")],
+    raw: Annotated[Path, typer.Option(help="Raw folder the manifest was built from (read only)")],
+    out: TabularDir = TABULAR_DIR,
+    limit: Annotated[int | None, typer.Option(help="Only the first N kept images (tests)")] = None,
+) -> None:
+    """Per-image colour, H&E stain, texture and nuclei-density features of the kept images on the
+    existing split (streamed), plus the non-pathology cues for the shortcut check."""
+    from oscc_ml.tabular.extract import extract
+
+    _setup_logging()
+    info = extract(manifest, raw, out, limit=limit)
+    typer.echo(
+        f"{info['n_images']} images, {info['n_feature_columns']} feature columns -> "
+        f"{out / info['features_file']} (SHA-256 {info['features_sha256']})"
+    )
+
+
+@app.command("tabular-check")
+def tabular_check_command(
+    manifest: Annotated[Path, typer.Option(help="manifest.csv the table was built from")],
+    table: TabularDir = TABULAR_DIR,
+) -> None:
+    """Re-check the table: rows = kept images, no missing/non-finite values, ids, split, label,
+    magnification and group equal to the manifest."""
+    from oscc_ml.tabular import FEATURES_FILE
+    from oscc_ml.tabular.extract import ExtractionError, check_table
+
+    try:
+        result = check_table(table / FEATURES_FILE, manifest)
+    except ExtractionError as exc:
+        raise _fail(str(exc)) from exc
+    typer.echo(json.dumps(result, indent=2))
+
+
+@app.command("tabular-train")
+def tabular_train_command(
+    features: TabularDir = TABULAR_DIR,
+    runs_dir: RunsDir = RUNS_DIR,
+    bootstrap: Annotated[int, typer.Option(help="Bootstrap resamples")] = 2000,
+    ablation: Annotated[bool, typer.Option(help="Also run the +magnification ablation")] = True,
+    config_dir: ConfigDir = None,
+) -> None:
+    """Logistic regression, random forest and gradient boosting: grouped-CV tuning on train, tau on
+    validation, test once; run folders in the image-run format."""
+    from oscc_ml.tabular.models import train_tabular
+
+    _setup_logging()
+    done = train_tabular(
+        features,
+        runs_dir,
+        magnification_ablation=ablation,
+        n_bootstrap=bootstrap,
+        config_dir=config_dir,
+    )
+    for run in done:
+        typer.echo(f"run: {run}")
+
+
+@app.command("tabular-shortcut")
+def tabular_shortcut_command(
+    features: TabularDir = TABULAR_DIR,
+    out: Annotated[Path, typer.Option(help="Output folder")] = RUNS_DIR / "tabular_checks",
+    bootstrap: Annotated[int, typer.Option(help="Bootstrap resamples")] = 2000,
+) -> None:
+    """Shortcut check: non-pathology cues and magnification-only baselines (test AUC with CIs)."""
+    from oscc_ml.tabular.checks import shortcut_check
+
+    _setup_logging()
+    result = shortcut_check(features, out, n_bootstrap=bootstrap)
+    typer.echo(f"overall: {result['overall_verdict']} (highest AUC {result['highest_test_auc']})")
+
+
+@app.command("tabular-report")
+def tabular_report_command(
+    features: TabularDir = TABULAR_DIR,
+    runs_dir: RunsDir = RUNS_DIR,
+    checks: Annotated[Path, typer.Option(help="Shortcut-check folder")] = RUNS_DIR
+    / "tabular_checks",
+    out: Annotated[Path, typer.Option(help="Markdown output")] = RUNS_DIR
+    / "report"
+    / "TABULAR_RESULTS.md",
+) -> None:
+    """TABULAR_RESULTS.md from the tabular run folders, extraction.json and the shortcut check."""
+    from oscc_ml.tabular.report import write_report
+
+    path = write_report(runs_dir, features, checks, out)
+    typer.echo(f"wrote {path}")

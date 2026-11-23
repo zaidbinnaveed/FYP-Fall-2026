@@ -155,6 +155,9 @@ oscc-ml report --copy-to ../docs/results/baseline_fyp1.md                  # bas
 oscc-ml pack-results                                                       # runs/export/results_small.zip + checkpoints.zip (SHA-256 manifest)
 oscc-ml import-results results_small.zip                                   # at home: verify + unpack into runs/, then `oscc-ml report`
 oscc-ml check / oscc-ml env / oscc-ml make-synthetic-data --out <dir>      # readiness check / environment info / test data
+oscc-ml tabular-extract --manifest <prepare manifest.csv> --raw <raw folder>   # tabular dataset (Phase T): data/processed/tabular/oscc_features_v1.csv (+ cues, extraction.json)
+oscc-ml tabular-check --manifest <manifest.csv>                            # rows = kept images, no NaNs, split/label/magnification/group = manifest
+oscc-ml tabular-train / tabular-shortcut / tabular-report                  # LR, RF, GB runs (image-run format) / shortcut check / TABULAR_RESULTS.md
 cd frontend && npm ci && npm run dev                                       # SPA dev server
 cd frontend && npm test && npx playwright test                             # unit + e2e (Playwright from D6)
 ```
