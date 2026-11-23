@@ -12,6 +12,22 @@ from oscc_ml.catalog import DISPLAY_NAME, TABULAR_ARCHITECTURES
 from oscc_ml.utils.io import read_json
 
 METRICS = ("auc_roc", "accuracy", "precision", "recall", "specificity", "f1")
+CLASS_STAT_COLUMNS = (
+    "tissue_fraction",
+    "rgb_r_mean",
+    "rgb_b_mean",
+    "hsv_s_mean",
+    "lab_l_mean",
+    "he_h_od_mean",
+    "he_e_od_mean",
+    "he_h_share",
+    "glcm_contrast_d1",
+    "glcm_homogeneity_d1",
+    "lbp_riu2_bin8",
+    "nuc_blob_density_per_10k_tissue_px",
+    "nuc_blob_area_median_px",
+    "nuc_h_positive_fraction",
+)
 
 
 def _ci(entry: dict[str, Any] | None) -> str:
@@ -148,6 +164,23 @@ def render(runs_dir: Path, features_dir: Path, checks_dir: Path) -> str:
             f"{_ci(read_json(a / 'evaluation.json')['test']['auc_roc']) if a else 'not yet run'} | "
             f"{_ci(read_json(b / 'evaluation.json')['test']['auc_roc']) if b else 'not yet run'} |"
         )
+    table = pd.read_csv(features_dir / extraction["features_file"], dtype={"magnification": str})
+    train = table[table["split"] == "train"]
+    lines += [
+        "",
+        "## Class-level image statistics (train split only; mean ± SD)",
+        "",
+        "| Feature | non-OSCC | OSCC |",
+        "| --- | --- | --- |",
+    ]
+    for col in CLASS_STAT_COLUMNS:
+        if col not in train:
+            continue
+        cells = []
+        for label in (0, 1):
+            values = train.loc[train["label"] == label, col]
+            cells.append(f"{values.mean():.3f} ± {values.std():.3f}")
+        lines.append(f"| `{col}` | {cells[0]} | {cells[1]} |")
     check_path = checks_dir / "shortcut_check.json"
     lines += ["", "## Shortcut check (non-pathology cues)", ""]
     if not check_path.is_file():

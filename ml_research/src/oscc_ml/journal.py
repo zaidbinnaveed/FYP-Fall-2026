@@ -130,9 +130,17 @@ def run_journal_lines(run_dir: Path) -> list[str]:
             f"status: **{info.get('status', 'n/a')}**.",
             f"- Model: {name} ({info.get('family', 'n/a')}), "
             f"weights: {info.get('weights', 'n/a')}.",
-            f"- Learning rate {_lr(info.get('lr'))} (source: {info.get('lr_source', 'n/a')}), "
-            f"batch size {info.get('batch_size', 'n/a')}, at most {info.get('epochs', 'n/a')} "
-            f"epochs, mixed precision: {'on' if info.get('amp_active') else 'off'}.",
+            (
+                f"- Tabular model: feature set {info.get('feature_set', 'n/a')} "
+                f"({info.get('n_features', 'n/a')} columns), features version "
+                f"{info.get('tabular_features_version', 'n/a')}, table SHA-256 "
+                f"`{str(info.get('features_sha256', 'n/a'))[:16]}…`."
+                if info.get("model_type") == "tabular"
+                else f"- Learning rate {_lr(info.get('lr'))} (source: "
+                f"{info.get('lr_source', 'n/a')}), batch size {info.get('batch_size', 'n/a')}, at "
+                f"most {info.get('epochs', 'n/a')} epochs, mixed precision: "
+                f"{'on' if info.get('amp_active') else 'off'}."
+            ),
             f"- Dataset version `{info.get('dataset_version', 'n/a')}`, protocol "
             f"{info.get('protocol_version', 'n/a')}, preprocessing "
             f"{info.get('preprocess_version', 'n/a')}, git commit "

@@ -292,3 +292,35 @@ def test_data_dictionary_documents_every_column(tmp_path: Path) -> None:
     features = set(pd.read_csv(tmp_path / "t" / FEATURES_FILE, nrows=0).columns)
     cues = set(pd.read_csv(tmp_path / "t" / CUES_FILE, nrows=0).columns)
     assert documented == features | cues  # nothing documented that does not exist
+
+
+def test_tabular_report_is_built_from_files_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from oscc_ml.tabular import models
+    from oscc_ml.tabular.checks import shortcut_check
+    from oscc_ml.tabular.report import write_report
+
+    manifest = _fake_release(tmp_path, n=36)
+    extract(manifest, tmp_path / "raw", tmp_path / "t")
+    small = {"tab_logreg": models.ModelSpec("tab_logreg", models._logreg, {"model__C": [1.0]})}
+    monkeypatch.setattr(models, "MODELS", small)
+    runs = tmp_path / "runs"
+    models.train_tabular(tmp_path / "t", runs, models=("tab_logreg",), n_bootstrap=30)
+    shortcut_check(tmp_path / "t", tmp_path / "checks", n_bootstrap=30)
+    text = write_report(runs, tmp_path / "t", tmp_path / "checks", tmp_path / "R.md").read_text(
+        "utf-8"
+    )
+    for heading in (
+        "## Dataset",
+        "## Test results",
+        "## Per magnification",
+        "## Permutation importance",
+        "## Ablation",
+        "## Class-level image statistics",
+        "## Shortcut check",
+    ):
+        assert heading in text
+    assert "Random forest (tabular) | not yet run" in text
+    info = json.loads((tmp_path / "t" / "extraction.json").read_text("utf-8"))
+    assert info["features_sha256"] in text
