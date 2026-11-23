@@ -22,7 +22,8 @@ classical classifiers and a working mock UI, and put the LLM on hold
   and ViT results + running skeleton".
 
 Status values: **done** · **done (open PR)** = built and CI-green but not merged ·
-**pending uni run** = code ready, needs the GPU run · **missing** = not built.
+**pending uni run** = code ready, needs the GPU run · **on hold** = paused by the supervisor ·
+**missing** = not built.
 
 | # | Deliverable | Evidence (files, PRs, commands) | Status |
 | --- | --- | --- | --- |
@@ -39,9 +40,10 @@ Status values: **done** · **done (open PR)** = built and CI-green but not merge
 | 5b | Baseline training (seed 42, all four) | `oscc-ml sweep`, `train-all`, `evaluate`, `report` (PR #9); `uni_run.{ps1,sh}` + `docs/UNI_RUNBOOK.md` (PRs #11, #22) | **pending uni run** |
 | 5c | Baseline results table (`docs/results/baseline_fyp1.md`, plan R2 acceptance) | `oscc-ml report --copy-to ../docs/results/baseline_fyp1.md` after `import-results` | **pending uni run** (file does not exist) |
 | 6 | Supervisor gate G1 (plan R1 acceptance: "supervisor shown the audit") and deviation sign-off | [`audit/SUPERVISOR_SIGNOFF.md`](audit/SUPERVISOR_SIGNOFF.md): G1 line + 11 deviations with tick boxes | sheet ready; **awaiting the supervisor** (audit B2, M7) |
-| 7 | Tabular dataset + classical classifiers (supervisor requirement; proposed FR-7.11) | Phase T: `oscc_ml.tabular`, `data/processed/tabular/oscc_features_v1.csv`, `docs/results/TABULAR_DATA_DICTIONARY.md`, `docs/TABULAR_VS_CV_EXPLAINER.md` | Phase T (in progress) |
-| 8 | Working mock UI (supervisor requirement; errata E17) | Phase U: `frontend/`, `docs/UI_DEMO.md` | Phase U (not started) |
+| 7 | Tabular dataset + classical classifiers (supervisor requirement; proposed FR-7.11) | Phase T (PR #27): `oscc_ml.tabular`; `data/processed/tabular/oscc_features_v1.csv` (gitignored, SHA-256 in `docs/results/TABULAR_RESULTS.md`); [`results/TABULAR_DATA_DICTIONARY.md`](results/TABULAR_DATA_DICTIONARY.md); [`results/TABULAR_RESULTS.md`](results/TABULAR_RESULTS.md); [`TABULAR_VS_CV_EXPLAINER.md`](TABULAR_VS_CV_EXPLAINER.md) | **done (open PR)** |
+| 8 | Working mock UI (supervisor requirement; errata E17) | Phase U: `frontend/`, [`UI_DEMO.md`](UI_DEMO.md) (screens, how to run, screenshots) | **done (open PR)**; supervisor's minor changes pending |
 | 9 | LLM / patient-support chatbot | — | **on hold** (errata E18) |
+| 10 | Model selection framework + FYP-I results package | Phase 2B: `oscc-ml report` → `results/MODEL_SELECTION.md`, `results/FYP1_RESULTS_TEMPLATE.md`, cost/dataset tables, figures; [`DATA_DOSSIER.md`](DATA_DOSSIER.md); README "For evaluators" | **done (open PR)** for the framework and the tabular rows; CNN/ViT rows **pending uni run** |
 
 ## How to reproduce what exists today
 

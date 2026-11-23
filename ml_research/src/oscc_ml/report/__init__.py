@@ -1,4 +1,5 @@
-"""``oscc-ml report``: the baseline table, generated only from run folders.
+"""``oscc-ml report``: the baseline table and the FYP-I results package, generated only from run
+folders (CNN, ViT and tabular runs share one format).
 
 Every number comes from ``run_info.json``, ``metrics.json`` and ``evaluation.json`` written by the
 pipeline. Nothing is typed by hand. The report refuses:
@@ -6,9 +7,14 @@ pipeline. Nothing is typed by hand. The report refuses:
 * smoke runs and runs on synthetic data,
 * runs that deviate from the protocol (``protocol_compliant: false``),
 * runs without ``evaluation.json`` (run ``oscc-ml evaluate`` first),
-* mixing dataset versions, learning rates or batch sizes in one table.
+* mixing dataset versions in one table, or image runs with different learning rates or batch
+  sizes (tabular runs have neither).
 
-Architectures without a usable run are listed as "not yet run".
+Architectures without a usable run are listed as "not yet run". Besides ``baseline.md`` /
+``summary.csv`` / ``summary.json`` the report writes ``MODEL_SELECTION.md`` (SDS rule, paired
+comparisons, per-magnification, calibration, errors, stability, cost, "why not" per model),
+``cost.md``, ``dataset.md``, ``FYP1_RESULTS_TEMPLATE.md`` and ``figures/`` (ROC, PR, confusion
+matrices, training curves, accuracy vs cost). Synthetic test runs are labelled SYNTHETIC everywhere.
 """
 
 from __future__ import annotations
@@ -19,10 +25,19 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from oscc_ml.catalog import ALL_ARCHITECTURES, DISPLAY_NAME, EVALUATION_FILE, FAMILY, is_synthetic
+from oscc_ml.catalog import (
+    ALL_ARCHITECTURES,
+    DISPLAY_NAME,
+    EVALUATION_FILE,
+    FAMILY,
+    TABULAR_ARCHITECTURES,
+    is_synthetic,
+)
 from oscc_ml.utils.io import iso, read_json, utc_now, write_json
 
 NOT_YET_RUN = "not yet run"
+REPORT_ARCHITECTURES = ALL_ARCHITECTURES + TABULAR_ARCHITECTURES
+SYNTHETIC_BANNER = "> **SYNTHETIC — not real results.** Built from synthetic test runs."
 
 
 class ReportRefusedError(RuntimeError):
@@ -105,8 +120,13 @@ def collect(
         if record.evaluation is None:
             problems.append(f"{name}: no {EVALUATION_FILE}; run `oscc-ml evaluate` first")
         del arch
-    for field_name in ("dataset_version", "lr", "batch_size"):
-        values = {str(r.info.get(field_name)) for r in chosen.values()}
+    image_runs = [r for r in chosen.values() if r.info.get("model_type") != "tabular"]
+    for field_name, group in (
+        ("dataset_version", list(chosen.values())),
+        ("lr", image_runs),
+        ("batch_size", image_runs),
+    ):
+        values = {str(r.info.get(field_name)) for r in group}
         if len(values) > 1:
             problems.append(f"runs disagree on {field_name}: {sorted(values)}")
     if problems:
@@ -129,7 +149,7 @@ def _num(value: Any, fmt: str) -> str:
 
 def summary_rows(chosen: dict[str, RunRecord]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for arch in ALL_ARCHITECTURES:
+    for arch in REPORT_ARCHITECTURES:
         record = chosen.get(arch)
         if record is None or record.evaluation is None:
             rows.append({"architecture": arch, "model": DISPLAY_NAME[arch], "status": NOT_YET_RUN})
@@ -143,6 +163,7 @@ def summary_rows(chosen: dict[str, RunRecord]) -> list[dict[str, Any]]:
                 "model": DISPLAY_NAME[arch],
                 "family": FAMILY[arch],
                 "status": "completed",
+                "synthetic": is_synthetic(str(record.info.get("dataset_version", ""))),
                 "run": record.path.name,
                 **{
                     f"{metric}_{part}": test[metric][part]
@@ -160,6 +181,7 @@ def summary_rows(chosen: dict[str, RunRecord]) -> list[dict[str, Any]]:
                 "parameter_count": cost["parameter_count"],
                 "gflops_per_patch": cost["gflops_per_patch"],
                 "cpu_latency_mean_ms": cost["latency_cpu"]["mean_ms"],
+                "latency_unit": "feature row" if FAMILY[arch] == "Tabular" else "224 px patch",
                 "cpu_latency_p95_ms": cost["latency_cpu"]["p95_ms"],
                 "gpu_latency_mean_ms": gpu.get("mean_ms"),
                 "gpu_latency_p95_ms": gpu.get("p95_ms"),
@@ -177,20 +199,30 @@ def summary_rows(chosen: dict[str, RunRecord]) -> list[dict[str, Any]]:
 def render_markdown(
     chosen: dict[str, RunRecord], rows: list[dict[str, Any]], notes: list[str]
 ) -> str:
-    any_record = next(iter(chosen.values()))
+    image_records = [r for r in chosen.values() if r.info.get("model_type") != "tabular"]
+    any_record = image_records[0] if image_records else next(iter(chosen.values()))
     info = any_record.info
     ev = any_record.evaluation or {}
     meta = ev.get("test", {}).get("_meta", {})
+    synthetic = any(is_synthetic(str(r.info.get("dataset_version", ""))) for r in chosen.values())
+    lr = info.get("lr")
     lines = [
         "# Baseline results (FYP-I, seed 42)",
         "",
+        *([SYNTHETIC_BANNER, ""] if synthetic else []),
         f"_Generated by `oscc-ml report` on {iso(utc_now())} from run folders only. "
         "Do not edit by hand; regenerate instead._",
         "",
-        f"- Dataset: `{info.get('dataset_version')}`; learning rate {info.get('lr'):g} "
-        f"({info.get('lr_source')}); batch size {info.get('batch_size')}; "
-        f"protocol `{info.get('protocol_version')}`.",
-        "- Unit: image (mean of patch probabilities). Threshold tau calibrated on validation "
+        f"- Dataset: `{info.get('dataset_version')}`; image models: "
+        + (
+            f"learning rate {lr:g} ({info.get('lr_source')}); batch size {info.get('batch_size')}; "
+            f"protocol `{info.get('protocol_version')}`."
+            if image_records and lr is not None
+            else "not yet run."
+        ),
+        "- Tabular models: one feature row per image, grouped-CV tuning on train (ADR-0006).",
+        "- Unit: image (image models: mean of patch probabilities). Threshold tau calibrated on "
+        "validation "
         f"(target recall {ev.get('threshold', {}).get('target_recall')}); inconclusive margin "
         f"{ev.get('inconclusive_margin')}.",
         f"- 95% CIs: {meta.get('n_resamples')} bootstrap resamples of {meta.get('resampled_unit')} "
@@ -227,13 +259,15 @@ def render_markdown(
             continue
         train_s = row["training_time_seconds"]
         lines.append(
-            f"| {row['model']} | {row['parameter_count'] / 1e6:.2f} | {row['gflops_per_patch']:.2f} "
+            f"| {row['model']} | {row['parameter_count'] / 1e6:.4f} "
+            f"| {_num(row['gflops_per_patch'], '.2f')} "
             f"| {row['cpu_latency_mean_ms']:.1f} / {row['cpu_latency_p95_ms']:.1f} "
             f"| {_num(row['gpu_latency_mean_ms'], '.2f')} / {_num(row['gpu_latency_p95_ms'], '.2f')} "
             f"| {_num(row['peak_gpu_memory_train_mb'], '.0f')} / "
             f"{_num(row['peak_gpu_memory_inference_mb'], '.0f')} "
             f"| {_num(None if train_s is None else train_s / 3600, '.2f')} h "
-            f"| {_num(row['mean_epoch_seconds'], '.1f')} | {row['best_epoch']} / {row['epochs_run']} |"
+            f"| {_num(row['mean_epoch_seconds'], '.1f')} "
+            f"| {_num(row['best_epoch'], 'd')} / {_num(row['epochs_run'], 'd')} |"
         )
     lines += [
         "",
@@ -242,7 +276,7 @@ def render_markdown(
         "| Model | Run folder | Git commit | Dirty | GPU | torch |",
         "|---|---|---|---|---|---|",
     ]
-    for arch in ALL_ARCHITECTURES:
+    for arch in REPORT_ARCHITECTURES:
         record = chosen.get(arch)
         if record is None:
             continue
@@ -260,8 +294,9 @@ def render_markdown(
         lines += ["", "## Notes", ""] + [f"- {note}" for note in notes]
     lines += [
         "",
-        "Comparisons between models (paired bootstrap of the AUC difference, McNemar, Holm) and "
-        "the 3-seed analysis are Phase R3; this table alone does not show that one model is better.",
+        "Paired comparisons (bootstrap of the AUC difference, McNemar, Holm) and the selection rule "
+        "are in `MODEL_SELECTION.md`; the 3-seed analysis is Phase R3 (FYP-II). This table alone "
+        "does not show that one model is better.",
         "",
     ]
     return "\n".join(lines)
@@ -274,6 +309,8 @@ def build_report(
     seed: int = 42,
     allow_synthetic: bool = False,
     allow_noncompliant: bool = False,
+    dataset_info: Path | None = None,
+    n_resamples: int = 2000,
 ) -> dict[str, Path]:
     chosen, notes = collect(
         runs_dir, seed=seed, allow_synthetic=allow_synthetic, allow_noncompliant=allow_noncompliant
@@ -293,4 +330,9 @@ def build_report(
     csv_path.write_text(buffer.getvalue(), "utf-8")
     json_path = out_dir / "summary.json"
     write_json(json_path, {"generated_at": iso(utc_now()), "rows": rows, "notes": notes})
-    return {"markdown": md_path, "csv": csv_path, "json": json_path}
+    from oscc_ml.report.package import write_package
+
+    extra = write_package(
+        out_dir, chosen, rows, seed=seed, dataset_info=dataset_info, n_resamples=n_resamples
+    )
+    return {"markdown": md_path, "csv": csv_path, "json": json_path, **extra}

@@ -260,6 +260,17 @@ def test_classifiers_end_to_end_in_the_image_run_format(
     imp = pd.read_csv(forest / "permutation_importance_val.csv")
     assert imp.iloc[0]["feature"].startswith("signal_")
 
+    # the report treats tabular runs like image runs; ablations stay out of the main table
+    from oscc_ml.report import build_report
+
+    paths = build_report(runs, tmp_path / "report", allow_synthetic=True)
+    rows = pd.read_csv(paths["csv"])
+    assert set(rows[rows["status"] == "completed"]["architecture"]) == set(small)
+    selection = paths["model_selection"].read_text("utf-8")
+    assert "Selected under the rule" in selection
+    assert "Not yet run (not part of this selection): ResNet50" in selection
+    assert len(json.loads(paths["comparisons"].read_text("utf-8"))["seeds"]["42"]) == 3
+
 
 def test_shortcut_check_reports_every_baseline(tmp_path: Path) -> None:
     from oscc_ml.tabular.checks import shortcut_check

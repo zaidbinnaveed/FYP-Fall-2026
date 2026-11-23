@@ -177,10 +177,52 @@ def test_report_from_run_folders(pipeline: Path, tmp_path: Path) -> None:
     text = paths["markdown"].read_text("utf-8")
     for name in ("ResNet50", "EfficientNet-B0", "DenseNet121", "ViT-B/16"):
         assert name in text
-    assert "not yet run" not in text
+    assert "SYNTHETIC" in text
     rows = pd.read_csv(paths["csv"])
-    assert len(rows) == 4
-    assert rows["auc_roc_estimate"].between(0, 1).all()
+    assert len(rows) == 7  # 4 image models + 3 tabular models (not yet run here)
+    done = rows[rows["status"] == "completed"]
+    assert len(done) == 4
+    assert done["auc_roc_estimate"].between(0, 1).all()
+    assert set(rows[rows["status"] != "completed"]["architecture"]) == {
+        "tab_logreg",
+        "tab_random_forest",
+        "tab_gradient_boosting",
+    }
+
+
+def test_results_package_end_to_end_on_synthetic_runs(pipeline: Path, tmp_path: Path) -> None:
+    """Phase 2B: model selection, comparisons, cost, dataset, figures and the results template,
+    all from run folders, all labelled SYNTHETIC."""
+    from oscc_ml.report import figures as fig
+    from oscc_ml.report.selection import rank
+
+    paths = build_report(pipeline, tmp_path, allow_synthetic=True, allow_noncompliant=True)
+    selection = paths["model_selection"].read_text("utf-8")
+    assert "SYNTHETIC" in selection
+    assert "Highest test AUC-ROC, with recall as the tie-breaker" in selection
+    assert "One seed (42) in FYP-I" in selection
+    assert selection.count("- **") >= 3  # one "why not" line per model not selected
+    evaluations = {
+        json.loads((r.parent / "run_info.json").read_text("utf-8"))["architecture"]: json.loads(
+            r.read_text("utf-8")
+        )
+        for r in pipeline.glob("*/evaluation.json")
+    }
+    winner = rank(evaluations)[0]
+    top_auc = max(round(e["test"]["auc_roc"]["estimate"], 3) for e in evaluations.values())
+    assert round(evaluations[winner]["test"]["auc_roc"]["estimate"], 3) == top_auc
+    comparisons = json.loads(paths["comparisons"].read_text("utf-8"))
+    assert len(comparisons["seeds"]["42"]) == 6
+    template = paths["results_template"].read_text("utf-8")
+    assert "SYNTHETIC" in template
+    assert "not yet run" in template  # the tabular rows
+    assert "## 2. Baseline performance" in template
+    assert "SYNTHETIC" in paths["cost"].read_text("utf-8")
+    if fig.available():
+        names = {p.name for p in paths["figures"].glob("*.png")}
+        assert {"roc_test.png", "pr_test.png", "accuracy_vs_cost.png"} <= names
+        assert sum(n.startswith("confusion_") for n in names) == 4
+        assert sum(n.startswith("training_") for n in names) == 4
 
 
 def test_report_lists_missing_models_as_not_yet_run(pipeline: Path, tmp_path: Path) -> None:
