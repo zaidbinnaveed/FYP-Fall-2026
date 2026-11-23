@@ -1,40 +1,35 @@
-import { Link, Route, Routes } from 'react-router';
-import { strings } from './strings';
-
-function Home() {
-  return (
-    <>
-      <h1>{strings.homeHeading}</h1>
-      <p>{strings.homeStatus}</p>
-    </>
-  );
-}
-
-function NotFound() {
-  return (
-    <>
-      <h1>{strings.notFoundHeading}</h1>
-      <p>{strings.notFoundBody}</p>
-      <Link to="/">{strings.backHome}</Link>
-    </>
-  );
-}
+import { Route, Routes } from 'react-router';
+import { DemoAuthProvider } from './auth/DemoAuthProvider';
+import { Layout } from './components/Layout';
+import { paths } from './navigation';
+import { AdminScreen } from './screens/AdminScreen';
+import { LoginScreen, RegisterScreen } from './screens/AuthScreens';
+import { CompareScreen } from './screens/CompareScreen';
+import { HomeScreen, NotFoundScreen } from './screens/HomeScreen';
+import { HospitalsScreen } from './screens/HospitalsScreen';
+import { ResultScreen } from './screens/ResultScreen';
+import { SupportScreen } from './screens/SupportScreen';
+import { TreatmentScreen } from './screens/TreatmentScreen';
+import { UploadScreen } from './screens/UploadScreen';
 
 export function App() {
   return (
-    <>
-      <a className="skip-link" href="#main">
-        {strings.skipToContent}
-      </a>
-      <header>
-        <span>{strings.appName}</span>
-      </header>
-      <main id="main" tabIndex={-1}>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </main>
-    </>
+    <DemoAuthProvider>
+      <Routes>
+        <Route element={<Layout />}>
+          <Route path={paths.home} element={<HomeScreen />} />
+          <Route path={paths.login} element={<LoginScreen />} />
+          <Route path={paths.register} element={<RegisterScreen />} />
+          <Route path={paths.upload} element={<UploadScreen />} />
+          <Route path={paths.result} element={<ResultScreen />} />
+          <Route path={paths.compare} element={<CompareScreen />} />
+          <Route path={paths.hospitals} element={<HospitalsScreen />} />
+          <Route path={paths.treatment} element={<TreatmentScreen />} />
+          <Route path={paths.support} element={<SupportScreen />} />
+          <Route path={paths.admin} element={<AdminScreen />} />
+          <Route path="*" element={<NotFoundScreen />} />
+        </Route>
+      </Routes>
+    </DemoAuthProvider>
   );
 }
