@@ -7,7 +7,7 @@ This runbook takes you from an empty university machine to baseline results on y
 - **Dataset (recommended route): Google Drive.** Download `oscc_kaggle_kebede_v1.zip` (3,191,603,059 bytes) from the Drive folder `FYP-OSCC-data` into `ml_research\data\raw\kaggle_kebede\`. The scripts read the zip directly and nothing is unpacked.
   - **SHA-256:** `f75d25682388c85469995e16c543ebe4f889cbe8d4c521df37e2bbd1be4a6c0d` (MD5 `2a1ae4331427793950e73d3414b82640`). Check the download against it before running anything (section 1).
   - The zip holds the Kaggle dataset unchanged and uncompressed (`kaggle_kebede/{train,val,test}/{Normal,OSCC}`, 5,192 files).
-  - It was checked at home on 21 Nov 2026 with `prepare --manifest-only`. The result is identical to the extracted folder: 1,172 images kept, 41 label-conflict images excluded (ADR-0003), leakage test passed.
+  - It was checked at home with `prepare --manifest-only`, giving the same manifest as the extracted folder (every row equal apart from the `kaggle_kebede/` path prefix). On 22 Nov 2026, with ADR-0005: 1,179 images kept, 35 label-conflict images excluded (ADR-0003), 2 reviewed pairs applied, split 829 / 174 / 176, leakage test passed. (On 21 Nov, at the old threshold of 6: 1,172 kept, 41 excluded.)
   - Other routes (section 1): the original Kaggle `archive.zip` on a USB stick, or the extracted folder.
 - **Never store a password, token or key on the university machine.**
   - Sign in to Google only in a browser **private/incognito window**, only to download the zip, and sign out afterwards. Never let the browser save the password.
@@ -214,8 +214,8 @@ tail -f ml_research/runs/uni_run.log               # watch progress (Ctrl+C stop
 - **prepare:**
   - Reads the zip or folder one image at a time and computes SHA-256 and pHash.
   - Excludes the publisher's `aug_*` copies by name.
-  - Removes duplicate and near-duplicate originals (pHash, SHA-256).
-  - Excludes every duplicate cluster whose images carry both labels (ADR-0003). The release has 14 such Normal/OSCC pairs; the log line `... carry both labels ...` is expected, and the run goes on.
+  - Removes duplicate and near-duplicate originals (SHA-256, pHash distance ≤ 4) and the 2 reviewed same-field pairs in `configs/data/reviewed_duplicates.yaml` (ADR-0005). The log line `reviewed duplicate list (ADR-0005): applied: 2 pair(s)` is expected; if a listed file is missing, `prepare` stops.
+  - Excludes every duplicate cluster whose images carry both labels (ADR-0003). Expect 17 such clusters (14 byte-identical, 3 near-duplicate) and 35 excluded images; the log line `... carry both labels ...` is expected, and the run goes on.
   - Makes a grouped, stratified 70:15:15 split with seed 42 and runs the leakage test.
   - Writes 224×224 patches with the O5 rule and the ADR-0002 tissue cap.
   - Prints a count table per class, split and magnification. Keep it for the dataset audit.

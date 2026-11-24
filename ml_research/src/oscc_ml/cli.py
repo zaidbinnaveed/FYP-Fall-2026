@@ -368,7 +368,9 @@ def prepare_command(
     dataset_version: Annotated[
         str, typer.Option(help="Tag recorded in every run")
     ] = "oscc-unified-v1",
-    duplicate_threshold: Annotated[int, typer.Option(help="pHash distance for copies")] = 6,
+    duplicate_threshold: Annotated[
+        int, typer.Option(help="pHash distance for copies (ADR-0005)")
+    ] = 4,
     group_threshold: Annotated[int, typer.Option(help="pHash distance for grouping")] = 10,
     group_regex: Annotated[
         str | None, typer.Option(help="Regex extracting a patient ID from the path (group 1)")

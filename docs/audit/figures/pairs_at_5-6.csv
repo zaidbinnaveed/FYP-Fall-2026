@@ -1,0 +1,10 @@
+n,distance,path_a,label_a,path_b,label_b,note
+1,6,test/OSCC/OSCC_100x_256.jpg,1,train/Normal/Normal_400x_188.jpg,0,pHash distance 6; DIFFERENT labels; CROSS-MAGNIFICATION; no longer duplicates at threshold 4
+2,6,test/OSCC/OSCC_100x_256.jpg,1,train/OSCC/OSCC_100x_64.jpg,1,pHash distance 6; SAME label; same mag; no longer duplicates at threshold 4
+3,6,test/OSCC/OSCC_400x_112.jpg,1,train/OSCC/OSCC_400x_200.jpg,1,pHash distance 6; SAME label; same mag; no longer duplicates at threshold 4
+4,6,train/Normal/Normal_400x_188.jpg,0,train/OSCC/OSCC_100x_66.jpg,1,pHash distance 6; DIFFERENT labels; CROSS-MAGNIFICATION; no longer duplicates at threshold 4
+5,6,train/OSCC/OSCC_100x_108.jpg,1,train/OSCC/OSCC_100x_153.jpg,1,pHash distance 6; SAME label; same mag; no longer duplicates at threshold 4
+6,6,train/OSCC/OSCC_100x_66.jpg,1,train/OSCC/OSCC_400x_489.jpg,1,pHash distance 6; SAME label; CROSS-MAGNIFICATION; no longer duplicates at threshold 4
+7,6,train/OSCC/OSCC_100x_81.jpg,1,val/OSCC/OSCC_100x_82.jpg,1,pHash distance 6; SAME label; same mag; no longer duplicates at threshold 4; REVIEWED SAME FIELD -> kept as duplicates (ADR-0005 list)
+8,6,train/OSCC/OSCC_400x_200.jpg,1,val/Normal/Normal_400x_177.jpg,0,pHash distance 6; DIFFERENT labels; same mag; no longer duplicates at threshold 4
+9,6,train/OSCC/OSCC_400x_417.jpg,1,val/OSCC/OSCC_400x_423.jpg,1,pHash distance 6; SAME label; same mag; no longer duplicates at threshold 4; REVIEWED SAME FIELD -> kept as duplicates (ADR-0005 list)

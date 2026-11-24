@@ -182,7 +182,7 @@ Dependency direction is the SDS one: `frontend → api → inference → ml_rese
 ### R1. Dataset audit, unification and splitting (FR-7.1–7.3) — Shahryar (lead), Zaid
 1. Download [12] (Kaggle API token on the team's machine — Claude Code cannot do this step) and [10]/[11] (Zenodo/GitHub, using their split files for reference).
 2. Build `manifests/all_images.csv`: `image_id, source, original_path, label, patient_or_group_id, magnification, width, height, sha256, phash, is_augmented_copy, split`.
-3. **Audit report** (`docs/results/dataset_audit.md`, generated): counts per source × label × magnification; image sizes; duplicate clusters (pHash Hamming ≤ 6, tune by visual inspection of a sample); whether patient IDs exist; examples of each class.
+3. **Audit report** (`docs/results/dataset_audit.md`, generated): counts per source × label × magnification; image sizes; duplicate clusters (pHash Hamming ≤ 6, tune by visual inspection of a sample; tuned to ≤ 4 plus a reviewed same-field list in ADR-0005); whether patient IDs exist; examples of each class.
 4. Deduplicate; drop Kaggle augmented copies; assign group IDs.
 5. Split [12] 70:15:15 by patient (or by group, see §3), stratified by label, seed 42 (`StratifiedGroupKFold`-based). Assert no group appears in two splits.
 6. Multi-OSCC → `external_positive` split (never used for training or threshold selection).

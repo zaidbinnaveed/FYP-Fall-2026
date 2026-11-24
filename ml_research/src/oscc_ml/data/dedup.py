@@ -5,13 +5,19 @@ distance between two images is the smallest Hamming distance between image A's p
 any of image B's eight hashes, so flipped or rotated augmented copies are recognised exactly.
 
 Two thresholds (both recorded in dataset.json; tune at gate G1 by inspecting clusters):
-* ``duplicate_threshold`` (default 6, plan R1): images this close are copies of one another
-  (augmented copies, re-saves). One representative per duplicate cluster is kept.
+* ``duplicate_threshold`` (default 4, ADR-0005; plan R1 proposed 6): images this close are copies
+  of one another (re-saves, flips/rotations). One representative per duplicate cluster is kept.
+  Visually confirmed same-field pairs above the threshold are added as extra links (ADR-0005,
+  ``configs/data/reviewed_duplicates.yaml``).
+* pHash distances are always even (every 64-bit pHash has exactly 32 one-bits: the bits are
+  "above the median of 64 values"), so thresholds 4/5, 6/7 and 10/11 behave identically.
 * ``group_threshold`` (default 10): kept images this close are probably neighbouring fields of the
   same slide/patient, so they are grouped and always land in the same split.
 """
 
 from __future__ import annotations
+
+from collections.abc import Sequence
 
 import numpy as np
 from numpy.typing import NDArray
@@ -49,9 +55,14 @@ def min_distances(hashes: NDArray[np.uint64], chunk: int = 512) -> NDArray[np.ui
     return np.minimum(out, out.T)
 
 
-def clusters(distances: NDArray[np.uint8], threshold: int) -> NDArray[np.int64]:
-    """Connected components of the graph 'distance <= threshold' (union-find). Labels 0..k-1,
-    numbered by their first member so the result is deterministic."""
+def clusters(
+    distances: NDArray[np.uint8],
+    threshold: int,
+    extra_edges: Sequence[tuple[int, int]] = (),
+) -> NDArray[np.int64]:
+    """Connected components of the graph 'distance <= threshold' plus ``extra_edges`` (reviewed
+    same-field pairs, ADR-0005), by union-find. Labels 0..k-1, numbered by their first member so the
+    result is deterministic."""
     n = distances.shape[0]
     parent = np.arange(n)
 
@@ -62,7 +73,10 @@ def clusters(distances: NDArray[np.uint8], threshold: int) -> NDArray[np.int64]:
         return i
 
     rows, cols = np.nonzero(np.triu(distances <= threshold, k=1))
-    for a, b in zip(rows.tolist(), cols.tolist(), strict=True):
+    edges = list(zip(rows.tolist(), cols.tolist(), strict=True)) + [
+        (int(a), int(b)) for a, b in extra_edges
+    ]
+    for a, b in edges:
         ra, rb = find(a), find(b)
         if ra != rb:
             parent[max(ra, rb)] = min(ra, rb)

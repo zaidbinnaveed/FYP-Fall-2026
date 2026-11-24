@@ -1,0 +1,40 @@
+# Reviewed same-field pairs (ADR-0005). Each pair was confirmed by visual inspection to show the same
+# tissue field, although its pHash distance (6) is above the duplicate threshold (4). `prepare`
+# links each pair in the duplicate graph and then applies the ordinary duplicate rules.
+#
+# The list applies only to the release with `source_original_count` readable originals (the
+# Kaggle/Rahman copy, 1,224). For that release every file must be present (name + SHA-256) and both
+# files of a pair must carry the same label, otherwise `prepare` stops. For any other source
+# (synthetic data, the local sample) it is recorded as not applicable.
+#
+# Evidence: docs/audit/figures/pairs_at_5-6.jpg (rows #7 and #9) and its CSV, made by
+# ml_research/scripts/audit/make_pair_sheets.py. SHA-256 values from the full-dataset manifest and,
+# independently, from scripts/audit/verify_dataset_independent.py (identical).
+version: 1
+source_name: kaggle_kebede
+source_original_count: 1224
+pairs:
+  - a:
+      name: OSCC_100x_81.jpg
+      sha256: 9e0bfd236affda810d7587202f7c71b1d24ac475cf904f9642d26a22a33c6936
+    b:
+      name: OSCC_100x_82.jpg
+      sha256: 54ef8a769242dd385567fec12d57e99d6f1c8fa20b8db697f1c40814b2b1b946
+    reason: >-
+      Same field, slightly shifted: the same keratin pearl and the same two holes at the bottom
+      edge. pHash distance 6.
+    evidence: docs/audit/figures/pairs_at_5-6.jpg row 7
+    reviewer: Claude Code, pending Zaid confirmation
+    date: "2026-11-22"
+  - a:
+      name: OSCC_400x_417.jpg
+      sha256: 072396af894c7064624a28c5c1d22de6b771227a7e74fc4bbe7d940fa8168484
+    b:
+      name: OSCC_400x_423.jpg
+      sha256: 3513a181f24c2c6d3e7f97812516185c8b99cf9ab681e1286d196c50506547df
+    reason: >-
+      Same field and the same cells, with a different colour balance (one image is more saturated).
+      pHash distance 6.
+    evidence: docs/audit/figures/pairs_at_5-6.jpg row 9
+    reviewer: Claude Code, pending Zaid confirmation
+    date: "2026-11-22"

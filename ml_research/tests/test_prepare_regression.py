@@ -36,6 +36,11 @@ VOLATILE_KEYS = {"created_at", "seconds"}
 # so that every key that existed at 0b45abe must still be byte-identical, and they are checked
 # separately (no conflicts in these inputs).
 ADR_0003_KEYS = {"n_label_conflict_clusters", "n_label_conflict_images_excluded", "label_conflicts"}
+# ADR-0005 changed the duplicate threshold (6 -> 4) and added the reviewed same-field list. Neither
+# input has a pair at pHash distance 5-6 or a listed file, so every data file must be unchanged;
+# the changed/added settings are stripped from dataset.json and checked separately.
+ADR_0005_KEYS = {"reviewed_duplicates_status"}
+ADR_0005_SETTINGS = {"duplicate_threshold", "reviewed_duplicates"}
 
 
 def prepared_fingerprint(root: Path) -> dict[str, str]:
@@ -46,8 +51,14 @@ def prepared_fingerprint(root: Path) -> dict[str, str]:
         data = path.read_bytes()
         if path.name == "dataset.json":
             info = {
-                k: v for k, v in json.loads(data).items() if k not in VOLATILE_KEYS | ADR_0003_KEYS
+                k: v
+                for k, v in json.loads(data).items()
+                if k not in VOLATILE_KEYS | ADR_0003_KEYS | ADR_0005_KEYS
             }
+            if "settings" in info:
+                info["settings"] = {
+                    k: v for k, v in info["settings"].items() if k not in ADR_0005_SETTINGS
+                }
             data = json.dumps(info, sort_keys=True).encode()
         elif path.suffix == ".csv":
             data = data.replace(b"\r\n", b"\n")
@@ -108,8 +119,12 @@ EXPECTED_SYNTHETIC: dict[str, str] = {
     "summary.csv": "932ed35e16fad629a898a7a72fae59a27d4f07d6844feaf6883a53732dd508de",
 }
 # data/sample/ as made on 2026-11-17 (SAMPLE.json listing; 70 files, 60 kept, 2,641 patches).
+# dataset.json re-recorded for ADR-0005 (22 Nov 2026): a key-by-key diff against the 0b45abe-era
+# output showed only settings.duplicate_threshold (6 -> 4), settings.reviewed_duplicates (added),
+# reviewed_duplicates_status (added) and created_at changed; the 9 data files are unchanged.
+# Previous value: 1b78502d8f4b03f190f4c489d4bf76deaa1abd47ab465207dcebab7ab4964c7b.
 EXPECTED_SAMPLE: dict[str, str] = {
-    "dataset.json": "1b78502d8f4b03f190f4c489d4bf76deaa1abd47ab465207dcebab7ab4964c7b",
+    "dataset.json": "fac281f723df3f34fb0d5083ff43191506fe26df91a34e05f6edf11c902405d7",
     "images.csv": "c4118c5d36d6810fee3ebf0d0b06adb4417cad241c771f29dad54d66c68c157d",
     "manifest.csv": "f9b3eac7b39215ccdcbba7346a9697e721883c4c7449ab0ae8605ecf2ae14b34",
     "patches_test.csv": "87fca4a977240c249c90eedcf2ad869fd5d6824cfd73dd932030d98682b53cc0",
@@ -124,6 +139,8 @@ EXPECTED_SAMPLE: dict[str, str] = {
 
 def _assert_no_conflicts(root: Path) -> None:
     info = json.loads((root / "dataset.json").read_text("utf-8"))
+    assert info["settings"]["duplicate_threshold"] == 4
+    assert info["reviewed_duplicates_status"].startswith("not applicable")
     assert info["n_label_conflict_clusters"] == {"byte_identical": 0, "near_duplicate": 0}
     assert info["n_label_conflict_images_excluded"] == 0
     assert info["label_conflicts"] == []
