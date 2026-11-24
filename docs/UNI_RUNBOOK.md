@@ -221,7 +221,9 @@ tail -f ml_research/runs/uni_run.log               # watch progress (Ctrl+C stop
   - Prints a count table per class, split and magnification. Keep it for the dataset audit.
 - **sweep:** short runs of all four models for each learning rate in `protocol.yaml`; writes `runs/sweep/chosen_lr.json`.
 - **train-all:** trains the four models with seed 42 and the chosen learning rate. The log shows seconds per epoch and an ETA.
-- **evaluate:** test metrics with 95% bootstrap CIs, plus parameters, GFLOPs, CPU and GPU latency.
+- **evaluate:** the only step that reads the test split (audit M2). It predicts the test images from each run's `checkpoints/best.pt`, then computes tau from validation (and saves the validation curve), test metrics with 95% bootstrap CIs, per-magnification metrics, the confusion matrix with false-positive/false-negative image IDs, calibration (ECE), paired model comparisons (`runs/comparisons.json`), parameters, GFLOPs, CPU and GPU latency.
+- **Observation record:** every sweep trial and training run writes `observations/epochs.jsonl` (per-epoch losses, validation AUC/recall/specificity/F1, LR, gradient norms, time, GPU memory, warnings) and `observations/training_summary.json` (best epoch, stop epoch and reason, resumes). `runs/decisions.jsonl` lists every decision with its reason (chosen and rejected LRs, kept checkpoint, tau, comparisons); `runs/environment.json` records the machine. All of this goes into `results_small.zip`.
+- **Training journals:** after every sweep, training run and evaluation a plain-English `TRAINING_JOURNAL.md` is regenerated from those files only: one per run folder (what ran, the epoch table, the kept checkpoint and why training stopped, then tau and the test metrics with CIs), `runs/sweep/TRAINING_JOURNAL.md` (the chosen LR and why each other LR was rejected) and `runs/TRAINING_JOURNAL.md` (all steps and every decision with its reason). They are packed into `results_small.zip`; anything not yet run says "not yet run".
 - **report:** writes `runs/report/baseline.md`, built from the run folders only.
 - **pack-results:** writes `runs/export/results_small.zip` and `runs/export/checkpoints.zip`.
 

@@ -67,6 +67,11 @@ def small_files(runs_dir: Path) -> list[Path]:
         ]
     for extra in (
         runs_dir / SWEEP_DIR_NAME / "chosen_lr.json",
+        runs_dir / "decisions.jsonl",  # observation record (Phase 2A)
+        runs_dir / "environment.json",
+        runs_dir / "comparisons.json",
+        runs_dir / SWEEP_DIR_NAME / "TRAINING_JOURNAL.md",  # plain-English journals (Phase 2A)
+        runs_dir / "TRAINING_JOURNAL.md",
         *sorted((runs_dir / REPORT_DIR_NAME).glob("*")),
         *sorted(runs_dir.glob("*.log")),
     ):

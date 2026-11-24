@@ -75,6 +75,13 @@ cp infrastructure/.env.example infrastructure/.env
 
 The example values are for development only. Never commit `.env`.
 
+**Laptops with a small system drive:** set `OSCC_WORK_DIR` in your shell (for example
+`$env:OSCC_WORK_DIR = "E:\oscc-work"` in PowerShell) before running the research tests. pytest
+temp folders and `TMP`/`TEMP` then go to that drive and are deleted after the run, and the session
+stops early if the repository or temp drive has under `OSCC_MIN_FREE_GB` (default 5) GB free.
+CI and the university machine leave it unset and keep pytest's defaults. See
+`ml_research/conftest.py` and `infrastructure/.env.example`.
+
 ## Commands
 
 | What | Command |

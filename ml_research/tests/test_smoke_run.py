@@ -28,10 +28,12 @@ EXPECTED_FILES = [
     "checkpoints/last.pt",
     "predictions/val_patches.csv",
     "predictions/val_images.csv",
-    "predictions/test_patches.csv",
-    "predictions/test_images.csv",
     "metrics.json",
+    "observations/epochs.jsonl",
+    "observations/training_summary.json",
 ]
+# Training never writes test predictions (audit M2); `oscc-ml evaluate` does.
+NEVER_WRITTEN = ["predictions/test_patches.csv", "predictions/test_images.csv"]
 TIMING_KEYS = {"training_time_seconds", "mean_epoch_seconds"}
 
 
@@ -88,9 +90,12 @@ def test_resolved_config_marks_smoke(two_runs: tuple[Path, Path, float]) -> None
 def test_metrics_and_predictions_are_consistent(two_runs: tuple[Path, Path, float]) -> None:
     run_dir = two_runs[0]
     metrics = json.loads((run_dir / "metrics.json").read_text("utf-8"))
-    with (run_dir / "predictions" / "test_images.csv").open(encoding="utf-8") as handle:
+    with (run_dir / "predictions" / "val_images.csv").open(encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
-    assert len(rows) == metrics["test"]["image"]["n"] == 8
+    assert len(rows) == metrics["val"]["image"]["n"]
+    assert "test" not in metrics
+    for name in NEVER_WRITTEN:
+        assert not (run_dir / name).exists()
     assert all(0.0 <= float(r["oscc_probability"]) <= 1.0 for r in rows)
     assert {"group_id", "magnification"} <= set(rows[0])
     log = (run_dir / "train_log.csv").read_text("utf-8").splitlines()
@@ -104,8 +109,16 @@ def _strip_timing(row: dict[str, str]) -> dict[str, str]:
 
 def test_same_seed_runs_are_identical(two_runs: tuple[Path, Path, float]) -> None:
     a, b, _ = two_runs
-    for name in ("val_patches.csv", "val_images.csv", "test_patches.csv", "test_images.csv"):
+    for name in ("val_patches.csv", "val_images.csv"):
         assert (a / "predictions" / name).read_bytes() == (b / "predictions" / name).read_bytes()
+    epochs = [
+        [
+            {k: v for k, v in json.loads(line).items() if k != "epoch_seconds"}
+            for line in (d / "observations" / "epochs.jsonl").read_text("utf-8").splitlines()
+        ]
+        for d in (a, b)
+    ]
+    assert epochs[0] == epochs[1]
     with (a / "train_log.csv").open() as fa, (b / "train_log.csv").open() as fb:
         assert [_strip_timing(r) for r in csv.DictReader(fa)] == [
             _strip_timing(r) for r in csv.DictReader(fb)

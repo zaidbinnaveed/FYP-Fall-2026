@@ -135,7 +135,7 @@ oscc-ml make-test-zip --out <zip>                                          # syn
 oscc-ml train --model resnet50 --smoke                                     # CPU smoke training (synthetic, not reportable)
 oscc-ml sweep                                                              # shared LR sweep -> runs/sweep/chosen_lr.json (resumable)
 oscc-ml train-all --resume                                                 # 4 models x seed 42 with the chosen LR (resumable)
-oscc-ml evaluate                                                           # tau from val, test metrics + grouped bootstrap CIs, params/GFLOPs/latency
+oscc-ml evaluate                                                           # ONLY step that reads test: test preds from best.pt, tau from val, CIs, calibration, errors, paired comparisons, cost
 oscc-ml report --copy-to ../docs/results/baseline_fyp1.md                  # baseline table from run folders only (refuses smoke/synthetic)
 oscc-ml pack-results                                                       # runs/export/results_small.zip + checkpoints.zip (SHA-256 manifest)
 oscc-ml import-results results_small.zip                                   # at home: verify + unpack into runs/, then `oscc-ml report`

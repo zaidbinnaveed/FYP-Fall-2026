@@ -84,10 +84,13 @@ packages = ["oscc_ml"]
 mypy_path = "src"
 
 [[tool.mypy.overrides]]
-module = ["torchvision.*", "sklearn.*", "pandas.*"]
+module = ["torchvision.*", "sklearn.*", "pandas.*", "scipy.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
+# Keep no old temp folders: full runs used to fill a small C: drive (see conftest.py).
+tmp_path_retention_count = 0
+tmp_path_retention_policy = "none"
 markers = ["slow: runs a CPU smoke training (about a minute each)"]

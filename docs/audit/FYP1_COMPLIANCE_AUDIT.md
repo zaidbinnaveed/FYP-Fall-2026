@@ -1,6 +1,6 @@
 # FYP-I compliance and data-integrity audit
 
-> **Update (Phase 2A, 22 Nov 2026):** finding B1 was resolved by
+> **Update (Phase 2A, 22 Nov 2026):** finding M2 was fixed in Phase 2A PR (B): training never opens the test split; `oscc-ml evaluate` predicts it from `best.pt` (test renamed to `test_training_and_the_sweep_never_build_the_test_split`; see also `tests/test_observe.py`). Finding B1 was resolved by
 > [ADR-0005](../adr/0005-phash-thresholds-and-reviewed-duplicates.md): duplicate threshold 4, group
 > threshold 10, and a reviewed same-field list. The dataset counts in this Phase 1 record are at
 > threshold 6. The current counts are in ADR-0005: 1,179 kept, split 829 / 174 / 176, 35 conflict

@@ -16,6 +16,7 @@ import math
 from pathlib import Path
 from typing import Any
 
+from oscc_ml import journal, observe
 from oscc_ml.catalog import ALL_ARCHITECTURES, is_synthetic
 from oscc_ml.config import load_protocol
 from oscc_ml.data.processed import read_dataset_info
@@ -87,8 +88,21 @@ def run_sweep(
                 logger.exception("sweep trial %s failed", label)
                 failures.append(f"{label}: {type(exc).__name__}: {exc}")
                 continue
-            auc = read_json(run_dir / "metrics.json").get("best_val_auc_image")
-            trials.append({"model": model, "lr": lr, "best_val_auc": auc, "run": run_dir.name})
+            metrics = read_json(run_dir / "metrics.json")
+            auc = metrics.get("best_val_auc_image")
+            trials.append(
+                {
+                    "model": model,
+                    "lr": lr,
+                    "best_val_auc": auc,
+                    "best_epoch": metrics.get("best_epoch"),
+                    "epochs_run": metrics.get("epochs_run"),
+                    "training_time_seconds": metrics.get("training_time_seconds"),
+                    "mean_epoch_seconds": metrics.get("mean_epoch_seconds"),
+                    "run": run_dir.name,
+                    "per_epoch_record": f"{run_dir.name}/observations/epochs.jsonl",
+                }
+            )
             if auc is None:
                 failures.append(f"{label}: no validation AUC (single-class validation split?)")
             else:
@@ -98,6 +112,31 @@ def run_sweep(
         raise SweepIncompleteError("sweep incomplete:\n  " + "\n  ".join(failures))
 
     chosen, means = select_lr(table)
+    ranked = sorted(means, key=lambda lr: (-means[lr], lr))
+    lr_decisions = [
+        {
+            "lr": lr,
+            "rank": rank,
+            "mean_val_auc": means[lr],
+            "val_auc_by_model": table[lr],
+            "decision": "chosen" if lr == chosen else "rejected",
+            "reason": (
+                f"highest mean validation AUC over the {len(models)} models"
+                + (
+                    " (tie; the lower LR wins)"
+                    if sum(math.isclose(m, means[chosen], abs_tol=1e-12) for m in means.values())
+                    > 1
+                    else ""
+                )
+                if lr == chosen
+                else f"mean validation AUC {means[lr]:.4f} is {means[chosen] - means[lr]:.4f} "
+                f"below the chosen LR {chosen:g} ({means[chosen]:.4f})"
+                if not math.isclose(means[lr], means[chosen], abs_tol=1e-12)
+                else f"ties with the chosen LR {chosen:g}; ties go to the lower LR"
+            ),
+        }
+        for rank, lr in enumerate(ranked, start=1)
+    ]
 
     def best_lr(model: str) -> float:
         # highest validation AUC for this model; ties -> lower LR
@@ -119,8 +158,22 @@ def run_sweep(
         "val_auc_table": {f"{lr:g}": table[lr] for lr in sorted(table)},
         "best_lr_per_model": {m: lr for m, lr in per_model_best.items()},
         "trials": trials,
+        "lr_decisions": lr_decisions,
         "created_at": iso(utc_now()),
     }
     write_json(chosen_lr_path(runs_dir), result)
+    for row in lr_decisions:
+        observe.record_decision(
+            runs_dir,
+            "sweep",
+            f"LR {row['lr']:g} {row['decision']}",
+            reason=row["reason"],
+            mean_val_auc=row["mean_val_auc"],
+            val_auc_by_model=row["val_auc_by_model"],
+            evidence=f"{SWEEP_DIR_NAME}/{CHOSEN_LR_FILE}",
+        )
+    observe.snapshot_environment(runs_dir, device)
+    journal.safely(journal.write_sweep_journal, runs_dir)
+    journal.safely(journal.write_pipeline_journal, runs_dir)
     logger.info("sweep complete: chosen LR %g (mean val AUC %.4f)", chosen, means[chosen])
     return result

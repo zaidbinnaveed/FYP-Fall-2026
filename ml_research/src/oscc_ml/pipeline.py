@@ -214,6 +214,8 @@ def run_pipeline(options: PipelineOptions) -> list[StepResult]:
             def step_evaluate() -> tuple[str, str]:
                 done, failed = evaluate_all(
                     runs,
+                    data_root=options.data_root,
+                    device=options.device,
                     n_bootstrap=options.bootstrap,
                     warmup=options.latency_warmup,
                     latency_runs=options.latency_runs,
