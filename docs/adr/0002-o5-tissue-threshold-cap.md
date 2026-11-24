@@ -19,6 +19,12 @@ Measured on the local 60-image development sample of the real dataset (`oscc-ml 
 | Plain Otsu (original O5) | 1,003 / 3,240 = **31%** | **11 / 60** |
 | Otsu capped at 40 (this ADR) | 2,641 / 3,240 = **82%** | **0 / 60** |
 
+**Regenerated 23 Nov 2026 (audit m5)** from saved runs on the same 60-image sample, `pp-0.3.0`:
+`oscc-ml prepare --raw data/sample --out <dir> --max-tissue-threshold 255` (plain Otsu) and `... 40`.
+`dataset.json` gives `tiling_fallbacks` **11** and **0** and `grid_tile_keep_rate` 0.313 and 0.8151.
+From `manifest.csv`: 3,240 grid tiles in both runs; patches kept 1,014 (= the 1,003 tiles with
+≥ 50% tissue + 11 single-tile fallbacks) and 2,641. The table above is reproduced.
+
 The visual check is `docs/results/tissue_filter_check.png`. It shows 24 kept and 24 dropped patches under the capped rule. The kept tiles come from 20 different images and the dropped tiles from 22, covering both classes and both magnifications. Kept tiles that plain Otsu would have dropped have a blue frame.
 
 ## Decision

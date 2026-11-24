@@ -71,7 +71,7 @@ Facts checked on 17 Nov 2026; Phase R1 must re-verify them on the downloaded fil
 
 **Binding consequences for the R track:**
 
-1. **Primary benchmark dataset = [12], rebuilt from the original images.** Remove augmented copies (perceptual hash), then re-split from scratch 70:15:15 with seed 42. Both classes come from one source, so the model cannot learn "source = label". If the original Rahman release is used to recover provenance, record it in the datasheet as the origin of [12].
+1. **Primary benchmark dataset = [12], rebuilt from the original images.** Remove augmented copies (perceptual hash; as built, the `aug_*` copies are excluded by name and pHash is used for duplicates among originals, audit m1), then re-split from scratch 70:15:15 with seed 42. Both classes come from one source, so the model cannot learn "source = label". If the original Rahman release is used to recover provenance, record it in the datasheet as the origin of [12].
 2. **Patient-level split:** check whether the release carries patient identifiers. If it does, split by patient (SRS requirement). If not, group near-duplicate images (pHash clusters) and split by group; record this as a documented deviation and limitation in the datasheet.
 3. **Multi-OSCC is an external, positive-only test set** for RQ3: report recall at τ on unseen-source OSCC, per magnification (×400 is the closest match to [12]). **Do not mix Multi-OSCC positives into training in the primary benchmark** — every extra positive would come from a different lab and scanner, which invites a shortcut. Mixed-source training is allowed only as an ablation, together with a source-shortcut check (a small classifier that predicts the source; if it succeeds easily, the confound is real and must be reported).
 4. **Class imbalance** (about 1 normal : 3 OSCC) → class-weighted loss and recall-oriented threshold, as the SDS already specifies.
@@ -114,7 +114,7 @@ Facts checked on 17 Nov 2026; Phase R1 must re-verify them on the downloaded fil
 | O2 | Target recall for τ | 0.95 | SDS/NFR-SAF-03 say "target recall" without a number. |
 | O3 | Inconclusive margin m | 0.05; report sensitivity at 0.03 and 0.10 | SRS/SDS give no value. |
 | O4 | Stain normalization (Macenko via `torchstain`) | Decide from the R3 ablation: adopt only if it improves external recall without lowering in-source AUC beyond its CI | SDS says "optional, applied identically if adopted". |
-| O5 | Tiling rule | If both sides < 448 px: resize to 224. Otherwise: non-overlapping 224×224 grid; drop patches with < 50% tissue (Otsu on saturation); if > 64 patches remain, take 64 evenly spaced. Identical in training and inference. | Mean aggregation over background patches would dilute the probability; a cap keeps NFR-PER-01 latency. |
+| O5 | Tiling rule | If both sides < 448 px: resize to 224. Otherwise: non-overlapping 224×224 grid; drop patches with < 50% tissue (Otsu on saturation; amended by ADR-0002 to saturation > min(Otsu, 40)); if > 64 patches remain, take 64 evenly spaced. Identical in training and inference. | Mean aggregation over background patches would dilute the probability; a cap keeps NFR-PER-01 latency. |
 | O6 | RAG similarity threshold | Cosine ≥ 0.50, tuned on 40 labelled questions | UC-CHT-02 alternate 3a needs a number. |
 | O7 | LLM provider | Any provider behind the adapter that offers chat completion and a moderation capability (SDS assumption). Choose by free/academic tier. | Cost and moderation support. |
 | O8 | Embedding model (768-d) | `sentence-transformers/paraphrase-multilingual-mpnet-base-v2`, run locally in the API | 768-d matches `knowledge_articles.embedding`; multilingual helps the "Urdu / Roman Urdu best effort" scope; no external call, so no PII leaves the server. |
@@ -185,7 +185,7 @@ Dependency direction is the SDS one: `frontend → api → inference → ml_rese
 3. **Audit report** (`docs/results/dataset_audit.md`, generated): counts per source × label × magnification; image sizes; duplicate clusters (pHash Hamming ≤ 6, tune by visual inspection of a sample; tuned to ≤ 4 plus a reviewed same-field list in ADR-0005); whether patient IDs exist; examples of each class.
 4. Deduplicate; drop Kaggle augmented copies; assign group IDs.
 5. Split [12] 70:15:15 by patient (or by group, see §3), stratified by label, seed 42 (`StratifiedGroupKFold`-based). Assert no group appears in two splits.
-6. Multi-OSCC → `external_positive` split (never used for training or threshold selection).
+6. Multi-OSCC → `external_positive` split (never used for training or threshold selection). **Deferred to FYP-II** (34.6 GB archive; errata E11).
 7. Patch extraction with the shared `oscc_ml.preprocess` module (decision O5). Store patches with their parent `image_id`.
 8. **H&E colour-profile validator** for FR-2.2: compute HSV/stain statistics on training images; derive accept ranges; measure false-reject on the test split and false-accept on ~200 non-histology images (photos, screenshots). This lives in `preprocess/` so the API's validation uses the same rule.
 9. Write `docs/datasheet.md` (SRS user documentation item): sources, licences, citations, composition, split method, deduplication, known limitations. Tag the release `dataset_version = oscc-unified-v1`.
@@ -320,6 +320,15 @@ Guardrail pipeline as composable stages, in SDS order (ST4):
 - User documentation (SRS §5.4): user manual, administrator guide, in-app help/FAQ, tooltips, OpenAPI docs, deployment guide/README, model cards, datasheet.
 
 ---
+
+## 7A. FYP-I scope change (23 Nov 2026)
+
+The supervisor's FYP-I requirements add two items and pause one (record: `docs/SCOPE_CHANGE_FYP1.md`; errata E16–E18):
+
+- **Phase T — tabular dataset + classical classifiers (proposed FR-7.11), FYP-I.** `oscc_ml.tabular`: per-image colour, H&E stain, texture and nuclei-density features from the kept images on the existing split; logistic regression, random forest, gradient boosting (scikit-learn), τ from validation, test used once, results in the image-run folder format; shortcut check (non-pathology cues, magnification only).
+- **Phase U — working mock UI, FYP-I** (was FYP-II in SRS §2.2): front-end screens on fixture data with a "Demo mode" banner; real API integration stays in D2–D6.
+- **LLM / chatbot (D5): on hold.**
+- Minority-class augmentation (SDS risk table) becomes an **R3 ablation** (errata E10).
 
 ## 8. Timeline and ownership (Nov 2026 – May 2027)
 

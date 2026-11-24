@@ -5,6 +5,16 @@
 > threshold 10, and a reviewed same-field list. The dataset counts in this Phase 1 record are at
 > threshold 6. The current counts are in ADR-0005: 1,179 kept, split 829 / 174 / 176, 35 conflict
 > exclusions; the verifier passed 46/46 checks.
+>
+> **Update (Phase 2A PR (C), 23 Nov 2026):** B2 and M7 → [`SUPERVISOR_SIGNOFF.md`](SUPERVISOR_SIGNOFF.md)
+> (G1 line + deviation tick boxes, awaiting the supervisor). B3 → [ADR-0004](../adr/0004-fyp1-baseline-protocol-defaults.md)
+> and the corrected "gate G2" comments. M1 → errata E7; M4 → E9 + `docs/model_cards/vit_b_16.md`;
+> M5 → E10 (augmentation becomes an R3 ablation); M6 → E11 (deferred to FYP-II). Minors: m1 stale
+> lines fixed; m2 runbook already updated in PR (A); m3, m7, m8, m9 in `docs/datasheet.md` (Mendeley
+> v1 = v2 verified from both listings); m5 ADR-0002 numbers regenerated from saved runs (the
+> Multi-OSCC metadata count remains in open PR #21); m6 → E8; m4 concerns open PR #21 itself
+> (update it from `main` before merging). M3 (parity test in D2) and M8 (literature review) are
+> unchanged.
 
 Phase 1 of the FYP-I audit, run 22 Nov 2026 on branch `audit/fyp1-compliance` (from `main` at
 `567a935`). **Read-only:** no code, configuration or data was changed. Only this document,

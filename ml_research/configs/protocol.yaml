@@ -3,7 +3,8 @@
 # tests/test_protocol.py enforces that (FR-7.6).
 #
 # Values marked "SDS" come from SDS Appendix A. Values marked "default" fill gaps the documents
-# leave open; they are the team's working defaults and are confirmed or changed at gate G2.
+# leave open; they are team defaults (18 Nov 2026, docs/adr/0004-fyp1-baseline-protocol-defaults.md),
+# to be confirmed or changed at gate G2 (Feb 2027).
 
 protocol_version: sds-appendix-a-v1
 
@@ -60,7 +61,7 @@ training:
 
 evaluation:
   aggregation: mean_patch_probability # SDS: image probability = mean of patch probabilities
-  target_recall: 0.95 # O2 (accepted default); threshold calibration is Phase R3
+  target_recall: 0.95 # O2 (accepted default); tau is calibrated on validation by `oscc-ml evaluate`
   inconclusive_margin: 0.05 # O3 (accepted default)
 
 smoke: # ADR-0001 G-e: CPU smoke run on synthetic images; never reportable

@@ -7,7 +7,8 @@ Architectures (SDS data dictionary ``model_versions.architecture``; plan section
     densenet121      DenseNet121      torchvision IMAGENET1K_V1
     vit_b_16         ViT-B/16         HuggingFace google/vit-base-patch16-224, eager attention
 
-All CNNs use the classic torchvision V1 recipe (confirmed at gate G2). ``pretrained=False``
+All CNNs use the classic torchvision V1 recipe: a team default (18 Nov 2026, ADR-0004), to be
+confirmed at gate G2 (Feb 2027). ``pretrained=False``
 builds the same architecture with random weights (offline; tests and cost measurement).
 """
 
